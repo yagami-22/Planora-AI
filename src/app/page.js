@@ -205,32 +205,37 @@ export default function Home() {
 
   async function markTodayComplete() {
     const today = new Date().toISOString().split("T")[0];
-
+  
     if (lastCompletedDate === today) {
       return alert("You already marked today's study complete.");
     }
-
+  
     const newStreak = studyStreak + 1;
     const newSessions = completedSessions + 1;
-
-    const { error } = await supabase
+  
+    const { data, error } = await supabase
       .from("study_stats")
-      .update({
-        study_streak: newStreak,
-        completed_sessions: newSessions,
-        last_completed_date: today,
-      })
-      .eq("user_id", user.id);
-
+      .upsert(
+        {
+          user_id: user.id,
+          study_streak: newStreak,
+          completed_sessions: newSessions,
+          last_completed_date: today,
+        },
+        { onConflict: "user_id" }
+      )
+      .select()
+      .single();
+  
     if (error) {
-      console.error("Update study stats error:", error);
-      return alert("Failed to update study stats.");
+      console.error("Study stats save error:", error);
+      return alert("Failed to save study stats.");
     }
-
-    setStudyStreak(newStreak);
-    setCompletedSessions(newSessions);
-    setLastCompletedDate(today);
-
+  
+    setStudyStreak(data.study_streak || 0);
+    setCompletedSessions(data.completed_sessions || 0);
+    setLastCompletedDate(data.last_completed_date || "");
+  
     alert("Great job! Today's study session marked complete.");
   }
 
