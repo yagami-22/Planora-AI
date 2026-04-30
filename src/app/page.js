@@ -682,7 +682,60 @@ export default function Home() {
                     className="bg-black p-4 rounded-xl flex justify-between items-center"
                   >
                     <div>
-                      <h4 className="font-semibold">{s.subject_name}</h4>
+                    <h4 className="font-semibold text-lg">{s.subject_name}</h4>
+
+<p className="text-sm text-gray-400 mb-1">
+  Exam Date: {s.exam_date}
+</p>
+
+<p className="text-sm text-gray-400 mb-2">
+  Days Left:{" "}
+  <span className="text-white font-semibold">
+    {Math.max(
+      1,
+      Math.ceil(
+        (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
+      )
+    )}
+  </span>
+</p>
+
+<div className="w-64 bg-zinc-800 rounded-full h-2 mb-2">
+  <div
+    className={`h-2 rounded-full ${
+      s.progress < 40
+        ? "bg-red-500"
+        : s.progress < 70
+        ? "bg-yellow-500"
+        : "bg-green-500"
+    }`}
+    style={{ width: `${s.progress}%` }}
+  ></div>
+</div>
+
+<span
+  className={`text-xs px-3 py-1 rounded-full ${
+    Math.ceil(
+      (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
+    ) <= 7
+      ? "bg-red-900 text-red-300"
+      : Math.ceil(
+          (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
+        ) <= 30
+      ? "bg-yellow-900 text-yellow-300"
+      : "bg-green-900 text-green-300"
+  }`}
+>
+  {Math.ceil(
+    (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
+  ) <= 7
+    ? "Urgent"
+    : Math.ceil(
+        (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
+      ) <= 30
+    ? "Upcoming"
+    : "Safe"}
+</span>
 
                       <p className="text-sm text-gray-400 mb-2">
                         Exam Date: {s.exam_date}
