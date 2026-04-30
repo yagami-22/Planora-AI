@@ -22,6 +22,7 @@ export default function Home() {
 
   const [studyStreak, setStudyStreak] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
+  const [lastCompletedDate, setLastCompletedDate] = useState("");
 
   useEffect(() => {
     async function getSession() {
@@ -44,9 +45,13 @@ export default function Home() {
     if (user) {
       fetchSubjects(user.id);
       fetchTimetable(user.id);
+      fetchStudyStats(user.id);
     } else {
       setSubjects([]);
       setTimetable([]);
+      setStudyStreak(0);
+      setCompletedSessions(0);
+      setLastCompletedDate("");
     }
   }, [user]);
 
@@ -90,6 +95,48 @@ export default function Home() {
 
     if (error) return console.error(error);
     if (data?.length > 0) setTimetable(data[0].plan || []);
+  }
+
+  async function fetchStudyStats(userId) {
+    const { data, error } = await supabase
+      .from("study_stats")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Fetch study stats error:", error);
+      return;
+    }
+
+    if (!data) {
+      const { data: newStats, error: insertError } = await supabase
+        .from("study_stats")
+        .insert([
+          {
+            user_id: userId,
+            study_streak: 0,
+            completed_sessions: 0,
+            last_completed_date: "",
+          },
+        ])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Create study stats error:", insertError);
+        return;
+      }
+
+      setStudyStreak(newStats.study_streak || 0);
+      setCompletedSessions(newStats.completed_sessions || 0);
+      setLastCompletedDate(newStats.last_completed_date || "");
+      return;
+    }
+
+    setStudyStreak(data.study_streak || 0);
+    setCompletedSessions(data.completed_sessions || 0);
+    setLastCompletedDate(data.last_completed_date || "");
   }
 
   async function addSubject() {
@@ -139,15 +186,51 @@ export default function Home() {
   async function clearAllData() {
     await supabase.from("subjects").delete().eq("user_id", user.id);
     await supabase.from("timetables").delete().eq("user_id", user.id);
+
+    await supabase
+      .from("study_stats")
+      .update({
+        study_streak: 0,
+        completed_sessions: 0,
+        last_completed_date: "",
+      })
+      .eq("user_id", user.id);
+
     setSubjects([]);
     setTimetable([]);
     setStudyStreak(0);
     setCompletedSessions(0);
+    setLastCompletedDate("");
   }
 
-  function markTodayComplete() {
-    setCompletedSessions(completedSessions + 1);
-    setStudyStreak(studyStreak + 1);
+  async function markTodayComplete() {
+    const today = new Date().toISOString().split("T")[0];
+
+    if (lastCompletedDate === today) {
+      return alert("You already marked today's study complete.");
+    }
+
+    const newStreak = studyStreak + 1;
+    const newSessions = completedSessions + 1;
+
+    const { error } = await supabase
+      .from("study_stats")
+      .update({
+        study_streak: newStreak,
+        completed_sessions: newSessions,
+        last_completed_date: today,
+      })
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Update study stats error:", error);
+      return alert("Failed to update study stats.");
+    }
+
+    setStudyStreak(newStreak);
+    setCompletedSessions(newSessions);
+    setLastCompletedDate(today);
+
     alert("Great job! Today's study session marked complete.");
   }
 
@@ -308,7 +391,6 @@ export default function Home() {
 
   function exportPDF() {
     const doc = new jsPDF("p", "mm", "a4");
-
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -318,19 +400,15 @@ export default function Home() {
     function addHeader(title) {
       doc.setFillColor(88, 28, 135);
       doc.rect(0, 0, pageWidth, 28, "F");
-
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
       doc.text("Planora AI", 14, 13);
-
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
       doc.text("AI Powered Study Planner Report", 14, 20);
-
       doc.setFontSize(12);
       doc.text(title, pageWidth - 14, 17, { align: "right" });
-
       doc.setTextColor(0, 0, 0);
     }
 
@@ -376,6 +454,7 @@ export default function Home() {
         ["Risk Level", insights?.risk || "N/A"],
         ["Study Streak", `${studyStreak} days`],
         ["Completed Sessions", completedSessions],
+        ["Last Completed Date", lastCompletedDate || "Not completed yet"],
       ],
       theme: "grid",
       headStyles: { fillColor: [88, 28, 135], textColor: [255, 255, 255] },
@@ -453,6 +532,7 @@ export default function Home() {
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
+
     const insightText = insights
       ? `Risk Level: ${insights.risk}. ${insights.recommendation}`
       : "No AI insights available yet.";
@@ -834,6 +914,10 @@ export default function Home() {
               </h3>
             </div>
           </div>
+
+          <p className="text-gray-400 text-sm mb-3">
+            Last completed: {lastCompletedDate || "Not completed yet"}
+          </p>
 
           <button
             onClick={markTodayComplete}
