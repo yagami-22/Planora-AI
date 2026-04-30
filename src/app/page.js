@@ -140,8 +140,19 @@ export default function Home() {
   }
 
   async function addSubject() {
-    if (!subjectName || !examDate || !dailyHours || !progress) {
+    if (!subjectName || !examDate || !dailyHours || progress === "") {
       return alert("Fill all fields");
+    }
+
+    const progressNumber = Number(progress);
+    const hoursNumber = Number(dailyHours);
+
+    if (progressNumber < 0 || progressNumber > 100) {
+      return alert("Progress must be between 0 and 100");
+    }
+
+    if (hoursNumber <= 0) {
+      return alert("Daily hours must be greater than 0");
     }
 
     setLoading(true);
@@ -152,9 +163,9 @@ export default function Home() {
         {
           subject_name: subjectName,
           exam_date: examDate,
-          daily_hours: Number(dailyHours),
+          daily_hours: hoursNumber,
           priority,
-          progress: Number(progress),
+          progress: progressNumber,
           user_id: user.id,
         },
       ])
@@ -184,6 +195,9 @@ export default function Home() {
   }
 
   async function clearAllData() {
+    const confirmClear = confirm("Are you sure you want to clear all data?");
+    if (!confirmClear) return;
+
     await supabase.from("subjects").delete().eq("user_id", user.id);
     await supabase.from("timetables").delete().eq("user_id", user.id);
     await supabase.from("study_sessions").delete().eq("user_id", user.id);
@@ -204,11 +218,11 @@ export default function Home() {
     setLastCompletedDate("");
   }
 
-  async function markTodayComplete() {
+  async function saveTodayCompletionStats() {
     const today = new Date().toISOString().split("T")[0];
 
     if (lastCompletedDate === today) {
-      return alert("You already marked today's study complete.");
+      return;
     }
 
     const newStreak = studyStreak + 1;
@@ -230,7 +244,8 @@ export default function Home() {
 
     if (error) {
       console.error("Study stats save error:", error);
-      return alert("Failed to save study stats.");
+      alert("Failed to save study stats.");
+      return;
     }
 
     setStudyStreak(data.study_streak || 0);
@@ -238,14 +253,27 @@ export default function Home() {
     setLastCompletedDate(data.last_completed_date || "");
   }
 
+  async function markTodayComplete() {
+    const today = new Date().toISOString().split("T")[0];
+
+    if (lastCompletedDate === today) {
+      return alert("You already marked today's study complete.");
+    }
+
+    await saveTodayCompletionStats();
+    alert("Today's study marked complete!");
+  }
+
   async function updateTodayPlanStatus(status) {
-    if (!user || !todayPlan) {
+    const currentTodayPlan = generateTodayPlan();
+
+    if (!user || !currentTodayPlan) {
       alert("User or today's plan not found");
       return;
     }
 
     const selectedSubject = subjects.find(
-      (s) => s.subject_name === todayPlan.subject
+      (s) => s.subject_name === currentTodayPlan.subject
     );
 
     if (!selectedSubject) {
@@ -264,8 +292,8 @@ export default function Home() {
         body: JSON.stringify({
           user_id: user.id,
           subject_id: selectedSubject.id,
-          subject_name: todayPlan.subject,
-          planned_minutes: todayPlan.hours * 60,
+          subject_name: currentTodayPlan.subject,
+          planned_minutes: Number(currentTodayPlan.hours) * 60,
           status,
         }),
       });
@@ -278,7 +306,7 @@ export default function Home() {
       }
 
       if (status === "completed") {
-        await markTodayComplete();
+        await saveTodayCompletionStats();
         await fetchStudyStats(user.id);
       }
 
@@ -903,6 +931,10 @@ export default function Home() {
                 {subjects.map((s) => {
                   const daysLeft = getDaysLeft(s.exam_date);
                   const urgencyLabel = getUrgencyLabel(daysLeft);
+                  const progressWidth = Math.min(
+                    100,
+                    Math.max(0, Number(s.progress))
+                  );
 
                   return (
                     <div
@@ -928,13 +960,13 @@ export default function Home() {
                         <div className="w-64 bg-zinc-800 rounded-full h-2 mb-2">
                           <div
                             className={`h-2 rounded-full ${
-                              s.progress < 40
+                              Number(s.progress) < 40
                                 ? "bg-red-500"
-                                : s.progress < 70
+                                : Number(s.progress) < 70
                                 ? "bg-yellow-500"
                                 : "bg-green-500"
                             }`}
-                            style={{ width: `${s.progress}%` }}
+                            style={{ width: `${progressWidth}%` }}
                           ></div>
                         </div>
 
@@ -1112,7 +1144,8 @@ export default function Home() {
 
           <button
             onClick={markTodayComplete}
-            className="bg-orange-500 hover:bg-orange-400 text-black px-5 py-3 rounded-xl font-semibold"
+            disabled={loading}
+            className="bg-orange-500 hover:bg-orange-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
           >
             Mark Today Complete
           </button>
