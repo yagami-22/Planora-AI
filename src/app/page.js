@@ -138,46 +138,6 @@ export default function Home() {
     setTimetable([]);
   }
 
-  function parseAiTimetable(aiText) {
-    const blocks = aiText
-      .split(/\n(?=Monday:|Tuesday:|Wednesday:|Thursday:|Friday:|Saturday:|Sunday:)/)
-      .map((b) => b.trim())
-      .filter(Boolean);
-
-    return blocks.map((block) => {
-      const lines = block.split("\n").map((line) => line.trim());
-
-      return {
-        day: lines[0]?.replace(":", "") || "Day",
-        subject:
-          lines
-            .find((line) => line.startsWith("Subject:"))
-            ?.replace("Subject:", "")
-            .trim() || "",
-        studyType:
-          lines
-            .find((line) => line.startsWith("Study Type:"))
-            ?.replace("Study Type:", "")
-            .trim() || "",
-        timeAllocation:
-          lines
-            .find((line) => line.startsWith("Time Allocation:"))
-            ?.replace("Time Allocation:", "")
-            .trim() || "",
-        reason:
-          lines
-            .find((line) => line.startsWith("Reason:"))
-            ?.replace("Reason:", "")
-            .trim() || "",
-        aiScore:
-          lines
-            .find((line) => line.startsWith("AI Score:"))
-            ?.replace("AI Score:", "")
-            .trim() || "",
-      };
-    });
-  }
-
   async function generateTimetable() {
     if (subjects.length === 0) return alert("Add subjects first");
 
@@ -186,42 +146,27 @@ export default function Home() {
     try {
       const today = new Date();
 
-      const subjectsForAI = subjects.map((s) => {
-        const exam = new Date(s.exam_date);
-        const daysLeft = Math.max(
-          1,
-          Math.ceil((exam - today) / (1000 * 60 * 60 * 24))
-        );
-
-        return {
-          name: s.subject_name,
-          priority: s.priority,
-          progress: s.progress,
-          daysLeft,
-        };
-      });
-
       const scored = subjects.map((s) => {
         const exam = new Date(s.exam_date);
         const daysLeft = Math.max(
           1,
           Math.ceil((exam - today) / (1000 * 60 * 60 * 24))
         );
-      
+
         const urgencyScore = Math.max(0, 100 - daysLeft);
         const weaknessScore = 100 - Number(s.progress);
         const priorityScore =
           s.priority === "High" ? 40 : s.priority === "Medium" ? 20 : 10;
-      
+
         return {
           ...s,
           daysLeft,
           aiScore: urgencyScore + weaknessScore + priorityScore,
         };
       });
-      
+
       const sorted = [...scored].sort((a, b) => b.aiScore - a.aiScore);
-      
+
       const days = [
         "Monday",
         "Tuesday",
@@ -231,21 +176,23 @@ export default function Home() {
         "Saturday",
         "Sunday",
       ];
-      
+
       const plan = days.map((day, index) => {
         const s = sorted[index % sorted.length];
-      
+
+        let studyType = "Concept Study + Practice";
+
+        if (s.progress < 35) studyType = "Weak Topic Recovery";
+        else if (s.daysLeft <= 5) studyType = "Revision + PYQs";
+        else if (s.priority === "High") studyType = "High Priority Practice";
+        else if (s.progress >= 70) studyType = "Quick Revision + Test";
+
         return {
           day,
           subject: s.subject_name,
-          studyType:
-            s.progress < 40
-              ? "Weak Topic Recovery"
-              : s.daysLeft < 5
-              ? "Revision + PYQs"
-              : "Concept Study",
+          studyType,
           timeAllocation: `${s.daily_hours} hour(s)`,
-          reason: `${s.subject_name} selected due to ${s.progress}% progress and exam in ${s.daysLeft} days`,
+          reason: `${s.subject_name} selected because progress is ${s.progress}%, priority is ${s.priority}, and exam is in ${s.daysLeft} days.`,
           aiScore: s.aiScore,
         };
       });
@@ -263,7 +210,7 @@ export default function Home() {
 
       setTimetable(plan);
     } catch (error) {
-      console.error("AI timetable error:", error);
+      console.error("Timetable error:", error);
       alert("Something went wrong while generating timetable");
     } finally {
       setLoading(false);
@@ -530,14 +477,14 @@ export default function Home() {
                 <p className="text-gray-300">
                   Study Type:{" "}
                   <span className="text-gray-400">
-                    {item.studyType || item.task || "AI Planned Study"}
+                    {item.studyType || "AI Planned Study"}
                   </span>
                 </p>
 
                 <p className="text-gray-300">
                   Time Allocation:{" "}
                   <span className="text-gray-400">
-                    {item.timeAllocation || item.time || "Flexible"}
+                    {item.timeAllocation || "Flexible"}
                   </span>
                 </p>
 
@@ -567,10 +514,10 @@ export default function Home() {
             </h2>
 
             <p className="text-gray-300">
-              This AI plan prioritizes subjects with lower progress, higher
-              priority, and closer exam dates. It mixes concept study, practice,
-              revision, mock tests, and weak-topic recovery so the student can
-              improve without burning out.
+              This free AI-style planner prioritizes subjects with lower
+              progress, higher priority, and closer exam dates. It mixes concept
+              study, practice, revision, and weak-topic recovery so the student
+              can improve without burning out.
             </p>
           </div>
         )}
