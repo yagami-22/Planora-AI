@@ -8,13 +8,8 @@ const supabase = createClient(
 export async function POST(req) {
   try {
     const body = await req.json();
-    const {
-      user_id,
-      subject_id,
-      subject_name,
-      planned_minutes,
-      status,
-    } = body;
+
+    const { user_id, subject_id, subject_name, planned_minutes, status } = body;
 
     if (!user_id || !subject_id || !subject_name || !status) {
       return Response.json(
@@ -26,10 +21,7 @@ export async function POST(req) {
     const allowedStatuses = ["pending", "in_progress", "completed", "skipped"];
 
     if (!allowedStatuses.includes(status)) {
-      return Response.json(
-        { error: "Invalid status" },
-        { status: 400 }
-      );
+      return Response.json({ error: "Invalid status" }, { status: 400 });
     }
 
     const isCompleted = status === "completed";
