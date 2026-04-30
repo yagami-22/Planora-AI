@@ -448,9 +448,23 @@ export default function Home() {
                   >
                     <div>
                       <h4 className="font-semibold">{s.subject_name}</h4>
-                      <p className="text-sm text-gray-400">
-                        Exam Date: {s.exam_date}
-                      </p>
+                      
+                      <p className="text-sm text-gray-400 mb-2">
+  Exam Date: {s.exam_date}
+</p>
+
+<div className="w-64 bg-zinc-800 rounded-full h-2">
+  <div
+    className={`h-2 rounded-full ${
+      s.progress < 40
+        ? "bg-red-500"
+        : s.progress < 70
+        ? "bg-yellow-500"
+        : "bg-green-500"
+    }`}
+    style={{ width: `${s.progress}%` }}
+  ></div>
+</div>
                     </div>
 
                     <div className="flex gap-4 items-center">
