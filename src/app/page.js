@@ -201,24 +201,54 @@ export default function Home() {
         };
       });
 
-      const res = await fetch("/api/generate-timetable", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          subjects: subjectsForAI,
-          hoursPerDay: dailyHours || subjects[0]?.daily_hours || 2,
-        }),
+      const scored = subjects.map((s) => {
+        const exam = new Date(s.exam_date);
+        const daysLeft = Math.max(
+          1,
+          Math.ceil((exam - today) / (1000 * 60 * 60 * 24))
+        );
+      
+        const urgencyScore = Math.max(0, 100 - daysLeft);
+        const weaknessScore = 100 - Number(s.progress);
+        const priorityScore =
+          s.priority === "High" ? 40 : s.priority === "Medium" ? 20 : 10;
+      
+        return {
+          ...s,
+          daysLeft,
+          aiScore: urgencyScore + weaknessScore + priorityScore,
+        };
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        return alert(data.error || "AI timetable generation failed");
-      }
-
-      const plan = parseAiTimetable(data.timetable);
+      
+      const sorted = [...scored].sort((a, b) => b.aiScore - a.aiScore);
+      
+      const days = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ];
+      
+      const plan = days.map((day, index) => {
+        const s = sorted[index % sorted.length];
+      
+        return {
+          day,
+          subject: s.subject_name,
+          studyType:
+            s.progress < 40
+              ? "Weak Topic Recovery"
+              : s.daysLeft < 5
+              ? "Revision + PYQs"
+              : "Concept Study",
+          timeAllocation: `${s.daily_hours} hour(s)`,
+          reason: `${s.subject_name} selected due to ${s.progress}% progress and exam in ${s.daysLeft} days`,
+          aiScore: s.aiScore,
+        };
+      });
 
       await supabase.from("timetables").delete().eq("user_id", user.id);
 
