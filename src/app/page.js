@@ -140,6 +140,51 @@ export default function Home() {
     setTimetable([]);
   }
 
+  function getDaysLeft(date) {
+    return Math.max(
+      1,
+      Math.ceil((new Date(date) - new Date()) / (1000 * 60 * 60 * 24))
+    );
+  }
+
+  function getUrgencyLabel(daysLeft) {
+    if (daysLeft <= 7) return "Urgent";
+    if (daysLeft <= 30) return "Upcoming";
+    return "Safe";
+  }
+
+  function generateAIInsights() {
+    if (subjects.length === 0) return null;
+
+    const sorted = [...subjects].sort(
+      (a, b) => Number(a.progress) - Number(b.progress)
+    );
+
+    const weakest = sorted[0];
+    const strongest = sorted[sorted.length - 1];
+
+    const avg =
+      subjects.reduce((sum, s) => sum + Number(s.progress), 0) /
+      subjects.length;
+
+    let riskLevel = "Low";
+    if (avg < 40) riskLevel = "High";
+    else if (avg < 70) riskLevel = "Medium";
+
+    return {
+      weakest: weakest.subject_name,
+      strongest: strongest.subject_name,
+      avg: Math.round(avg),
+      risk: riskLevel,
+      recommendation:
+        avg < 40
+          ? "High risk detected. Focus heavily on weak subjects for the next 5–7 days."
+          : avg < 70
+          ? "Medium risk. Maintain balance and increase practice for weak areas."
+          : "Good progress. Focus on revision, mock tests, and speed improvement.",
+    };
+  }
+
   async function generateTimetable() {
     if (subjects.length === 0) return alert("Add subjects first");
 
@@ -165,11 +210,7 @@ export default function Home() {
           Math.round(urgencyScore * 0.35 + weaknessScore * 0.45 + priorityScore)
         );
 
-        return {
-          ...s,
-          daysLeft,
-          aiScore,
-        };
+        return { ...s, daysLeft, aiScore };
       });
 
       const sorted = [...scored].sort((a, b) => b.aiScore - a.aiScore);
@@ -252,25 +293,16 @@ export default function Home() {
             subjects.length
         );
 
+  const insights = generateAIInsights();
+
   function exportPDF() {
     const doc = new jsPDF("p", "mm", "a4");
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    const strongestSubject =
-      subjects.length > 0
-        ? [...subjects].sort(
-            (a, b) => Number(b.progress) - Number(a.progress)
-          )[0]?.subject_name
-        : "N/A";
-
-    const weakestSubject =
-      subjects.length > 0
-        ? [...subjects].sort(
-            (a, b) => Number(a.progress) - Number(b.progress)
-          )[0]?.subject_name
-        : "N/A";
+    const strongestSubject = insights?.strongest || "N/A";
+    const weakestSubject = insights?.weakest || "N/A";
 
     function addHeader(title) {
       doc.setFillColor(88, 28, 135);
@@ -330,17 +362,11 @@ export default function Home() {
         ["Average Progress", `${averageProgress}%`],
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
+        ["Risk Level", insights?.risk || "N/A"],
       ],
       theme: "grid",
-      headStyles: {
-        fillColor: [88, 28, 135],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-      },
-      styles: {
-        fontSize: 10,
-        cellPadding: 3,
-      },
+      headStyles: { fillColor: [88, 28, 135], textColor: [255, 255, 255] },
+      styles: { fontSize: 10, cellPadding: 3 },
     });
 
     let y = doc.lastAutoTable.finalY + 12;
@@ -351,31 +377,26 @@ export default function Home() {
 
     autoTable(doc, {
       startY: y + 6,
-      head: [["Subject", "Exam Date", "Daily Hours", "Priority", "Progress"]],
+      head: [["Subject", "Exam Date", "Days Left", "Hours", "Priority", "Progress"]],
       body:
         subjects.length > 0
           ? subjects.map((s) => [
               s.subject_name,
               s.exam_date,
+              getDaysLeft(s.exam_date),
               `${s.daily_hours} hrs`,
               s.priority,
               `${s.progress}%`,
             ])
-          : [["No subjects added", "-", "-", "-", "-"]],
+          : [["No subjects added", "-", "-", "-", "-", "-"]],
       theme: "striped",
-      headStyles: {
-        fillColor: [126, 34, 206],
-        textColor: [255, 255, 255],
-      },
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-      },
+      headStyles: { fillColor: [126, 34, 206], textColor: [255, 255, 255] },
+      styles: { fontSize: 8.5, cellPadding: 3 },
     });
 
     y = doc.lastAutoTable.finalY + 12;
 
-    if (y > 235) {
+    if (y > 230) {
       doc.addPage();
       addHeader("Timetable");
       y = 40;
@@ -399,36 +420,31 @@ export default function Home() {
             ])
           : [["No timetable generated", "-", "-", "-", "-"]],
       theme: "grid",
-      headStyles: {
-        fillColor: [21, 128, 61],
-        textColor: [255, 255, 255],
-      },
-      styles: {
-        fontSize: 8.5,
-        cellPadding: 3,
-      },
+      headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255] },
+      styles: { fontSize: 8.5, cellPadding: 3 },
     });
 
     y = doc.lastAutoTable.finalY + 12;
 
     if (y > 220) {
       doc.addPage();
-      addHeader("Strategy");
+      addHeader("AI Insights");
       y = 40;
     }
 
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
-    doc.text("AI Study Strategy", 14, y);
+    doc.text("AI Insights", 14, y);
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
+    const insightText = insights
+      ? `Risk Level: ${insights.risk}. ${insights.recommendation}`
+      : "No AI insights available yet.";
 
-    const strategyText = `Based on your current data, your main focus should be weak topic recovery. Give more time to low-progress and high-priority subjects first. Use medium-progress subjects for regular revision, and use strong subjects for quick tests instead of long theory sessions. Your weakest subject is ${weakestSubject}, so it should get the first study slot whenever exams are near.`;
+    doc.text(doc.splitTextToSize(insightText, 180), 14, y + 8);
 
-    doc.text(doc.splitTextToSize(strategyText, 180), 14, y + 8);
-
-    y += 38;
+    y += 35;
 
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
@@ -445,23 +461,10 @@ export default function Home() {
               `${s.progress}%`,
               "Give extra revision and practice time",
             ])
-          : [
-              [
-                "No weak subjects detected",
-                "-",
-                "-",
-                "Current progress looks good",
-              ],
-            ],
+          : [["No weak subjects detected", "-", "-", "Current progress looks good"]],
       theme: "striped",
-      headStyles: {
-        fillColor: [185, 28, 28],
-        textColor: [255, 255, 255],
-      },
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-      },
+      headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255] },
+      styles: { fontSize: 9, cellPadding: 3 },
     });
 
     y = doc.lastAutoTable.finalY + 12;
@@ -485,14 +488,8 @@ export default function Home() {
           item.reason || "Based on priority, progress, and exam date.",
         ]),
         theme: "grid",
-        headStyles: {
-          fillColor: [30, 64, 175],
-          textColor: [255, 255, 255],
-        },
-        styles: {
-          fontSize: 8.5,
-          cellPadding: 3,
-        },
+        headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255] },
+        styles: { fontSize: 8.5, cellPadding: 3 },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 155 },
@@ -676,103 +673,117 @@ export default function Home() {
               <p className="text-gray-500">No subjects added yet.</p>
             ) : (
               <div className="space-y-3">
-                {subjects.map((s) => (
-                  <div
-                    key={s.id}
-                    className="bg-black p-4 rounded-xl flex justify-between items-center"
-                  >
-                    <div>
-                    <h4 className="font-semibold text-lg">{s.subject_name}</h4>
+                {subjects.map((s) => {
+                  const daysLeft = getDaysLeft(s.exam_date);
+                  const urgencyLabel = getUrgencyLabel(daysLeft);
 
-<p className="text-sm text-gray-400 mb-1">
-  Exam Date: {s.exam_date}
-</p>
+                  return (
+                    <div
+                      key={s.id}
+                      className="bg-black p-4 rounded-xl flex flex-col md:flex-row justify-between gap-4 md:items-center"
+                    >
+                      <div>
+                        <h4 className="font-semibold text-lg">
+                          {s.subject_name}
+                        </h4>
 
-<p className="text-sm text-gray-400 mb-2">
-  Days Left:{" "}
-  <span className="text-white font-semibold">
-    {Math.max(
-      1,
-      Math.ceil(
-        (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
-      )
-    )}
-  </span>
-</p>
+                        <p className="text-sm text-gray-400 mb-1">
+                          Exam Date: {s.exam_date}
+                        </p>
 
-<div className="w-64 bg-zinc-800 rounded-full h-2 mb-2">
-  <div
-    className={`h-2 rounded-full ${
-      s.progress < 40
-        ? "bg-red-500"
-        : s.progress < 70
-        ? "bg-yellow-500"
-        : "bg-green-500"
-    }`}
-    style={{ width: `${s.progress}%` }}
-  ></div>
-</div>
+                        <p className="text-sm text-gray-400 mb-2">
+                          Days Left:{" "}
+                          <span className="text-white font-semibold">
+                            {daysLeft}
+                          </span>
+                        </p>
 
-<span
-  className={`text-xs px-3 py-1 rounded-full ${
-    Math.ceil(
-      (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
-    ) <= 7
-      ? "bg-red-900 text-red-300"
-      : Math.ceil(
-          (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
-        ) <= 30
-      ? "bg-yellow-900 text-yellow-300"
-      : "bg-green-900 text-green-300"
-  }`}
->
-  {Math.ceil(
-    (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
-  ) <= 7
-    ? "Urgent"
-    : Math.ceil(
-        (new Date(s.exam_date) - new Date()) / (1000 * 60 * 60 * 24)
-      ) <= 30
-    ? "Upcoming"
-    : "Safe"}
-</span>
+                        <div className="w-64 bg-zinc-800 rounded-full h-2 mb-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              s.progress < 40
+                                ? "bg-red-500"
+                                : s.progress < 70
+                                ? "bg-yellow-500"
+                                : "bg-green-500"
+                            }`}
+                            style={{ width: `${s.progress}%` }}
+                          ></div>
+                        </div>
 
-                      <p className="text-sm text-gray-400 mb-2">
-                        Exam Date: {s.exam_date}
-                      </p>
-
-                      <div className="w-64 bg-zinc-800 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            s.progress < 40
-                              ? "bg-red-500"
-                              : s.progress < 70
-                              ? "bg-yellow-500"
-                              : "bg-green-500"
+                        <span
+                          className={`text-xs px-3 py-1 rounded-full ${
+                            urgencyLabel === "Urgent"
+                              ? "bg-red-900 text-red-300"
+                              : urgencyLabel === "Upcoming"
+                              ? "bg-yellow-900 text-yellow-300"
+                              : "bg-green-900 text-green-300"
                           }`}
-                          style={{ width: `${s.progress}%` }}
-                        ></div>
+                        >
+                          {urgencyLabel}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <span>{s.progress}%</span>
+                        <span className="bg-purple-600 px-3 py-1 rounded-full text-sm">
+                          {s.priority}
+                        </span>
+                        <button
+                          onClick={() => deleteSubject(s.id)}
+                          className="bg-red-600 px-3 py-1 rounded-lg text-sm"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex gap-4 items-center">
-                      <span>{s.progress}%</span>
-                      <span className="bg-purple-600 px-3 py-1 rounded-full text-sm">
-                        {s.priority}
-                      </span>
-                      <button
-                        onClick={() => deleteSubject(s.id)}
-                        className="bg-red-600 px-3 py-1 rounded-lg text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
+
+        {insights && (
+          <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+            <h2 className="text-2xl font-semibold mb-4 text-blue-400">
+              AI Insights
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Weakest Subject</p>
+                <h3 className="text-xl font-bold text-red-400">
+                  {insights.weakest}
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Strongest Subject</p>
+                <h3 className="text-xl font-bold text-green-400">
+                  {insights.strongest}
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Risk Level</p>
+                <h3
+                  className={`text-xl font-bold ${
+                    insights.risk === "High"
+                      ? "text-red-400"
+                      : insights.risk === "Medium"
+                      ? "text-yellow-400"
+                      : "text-green-400"
+                  }`}
+                >
+                  {insights.risk}
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-gray-300">{insights.recommendation}</p>
+          </div>
+        )}
 
         <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
           <h2 className="text-2xl font-semibold mb-5">Saved AI Timetable</h2>
