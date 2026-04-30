@@ -379,12 +379,27 @@ export default function Home() {
             <p className="text-gray-500">No timetable generated yet.</p>
           ) : (
             timetable.map((item, index) => (
-              <div key={index} className="bg-black p-4 rounded-xl mb-3">
-                <h3 className="font-bold text-purple-400">{item.day}</h3>
-                <p>{item.subject}</p>
-                <p className="text-gray-400">{item.task}</p>
-                <p className="text-sm text-gray-500">
-                  Time: {item.time} | Priority: {item.priority} | Exam in {item.daysLeft} days | AI Score: {item.aiScore}
+              <div key={index} className="bg-black p-5 rounded-xl mb-4 border border-zinc-800">
+                <h3 className="font-bold text-purple-400 text-lg mb-2">{item.day}</h3>
+            
+                <p className="text-white font-semibold">
+                  Subject: <span className="font-normal">{item.subject}</span>
+                </p>
+            
+                <p className="text-gray-300">
+                  Study Type: <span className="text-gray-400">{item.studyType || item.task}</span>
+                </p>
+            
+                <p className="text-gray-300">
+                  Time Allocation: <span className="text-gray-400">{item.timeAllocation || item.time}</span>
+                </p>
+            
+                <p className="text-gray-300">
+                  Reason: <span className="text-gray-400">{item.reason || "Based on priority, progress, and exam date."}</span>
+                </p>
+            
+                <p className="text-sm text-green-400 mt-2">
+                  AI Score: {item.aiScore || "N/A"}
                 </p>
               </div>
             ))
