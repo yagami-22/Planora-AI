@@ -205,14 +205,14 @@ export default function Home() {
 
   async function markTodayComplete() {
     const today = new Date().toISOString().split("T")[0];
-  
+
     if (lastCompletedDate === today) {
       return alert("You already marked today's study complete.");
     }
-  
+
     const newStreak = studyStreak + 1;
     const newSessions = completedSessions + 1;
-  
+
     const { data, error } = await supabase
       .from("study_stats")
       .upsert(
@@ -226,16 +226,16 @@ export default function Home() {
       )
       .select()
       .single();
-  
+
     if (error) {
       console.error("Study stats save error:", error);
       return alert("Failed to save study stats.");
     }
-  
+
     setStudyStreak(data.study_streak || 0);
     setCompletedSessions(data.completed_sessions || 0);
     setLastCompletedDate(data.last_completed_date || "");
-  
+
     alert("Great job! Today's study session marked complete.");
   }
 
@@ -281,6 +281,58 @@ export default function Home() {
           : avg < 70
           ? "Medium risk. Maintain balance and increase practice for weak areas."
           : "Good progress. Focus on revision, mock tests, and speed improvement.",
+    };
+  }
+
+  function generateTodayPlan() {
+    if (subjects.length === 0) return null;
+
+    const today = new Date();
+
+    const scored = subjects.map((s) => {
+      const exam = new Date(s.exam_date);
+      const daysLeft = Math.max(
+        1,
+        Math.ceil((exam - today) / (1000 * 60 * 60 * 24))
+      );
+
+      const urgencyScore = Math.max(0, 100 - Math.min(daysLeft, 100));
+      const weaknessScore = 100 - Number(s.progress);
+      const priorityScore =
+        s.priority === "High" ? 30 : s.priority === "Medium" ? 18 : 8;
+
+      const todayScore = Math.round(
+        urgencyScore * 0.35 + weaknessScore * 0.45 + priorityScore
+      );
+
+      return {
+        ...s,
+        daysLeft,
+        todayScore,
+      };
+    });
+
+    const best = scored.sort((a, b) => b.todayScore - a.todayScore)[0];
+
+    let focus = "Concept Study + Practice";
+    let reason = `${best.subject_name} is selected because progress is ${best.progress}%, priority is ${best.priority}, and exam is in ${best.daysLeft} days.`;
+
+    if (best.progress < 35) {
+      focus = "Weak Topic Recovery + Basics";
+    } else if (best.daysLeft <= 5) {
+      focus = "Revision + PYQs";
+    } else if (best.priority === "High") {
+      focus = "High Priority Practice";
+    } else if (best.progress >= 70) {
+      focus = "Quick Revision + Self Test";
+    }
+
+    return {
+      subject: best.subject_name,
+      focus,
+      hours: Number(best.daily_hours) || 2,
+      score: best.todayScore,
+      reason,
     };
   }
 
@@ -393,6 +445,7 @@ export default function Home() {
         );
 
   const insights = generateAIInsights();
+  const todayPlan = generateTodayPlan();
 
   function exportPDF() {
     const doc = new jsPDF("p", "mm", "a4");
@@ -457,6 +510,7 @@ export default function Home() {
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
         ["Risk Level", insights?.risk || "N/A"],
+        ["Today Plan", todayPlan?.subject || "N/A"],
         ["Study Streak", `${studyStreak} days`],
         ["Completed Sessions", completedSessions],
         ["Last Completed Date", lastCompletedDate || "Not completed yet"],
@@ -543,6 +597,20 @@ export default function Home() {
       : "No AI insights available yet.";
 
     doc.text(doc.splitTextToSize(insightText, 180), 14, y + 8);
+
+    y += 30;
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Today's AI Action Plan", 14, y);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const todayText = todayPlan
+      ? `${todayPlan.subject}: ${todayPlan.focus}. Recommended time: ${todayPlan.hours} hours. ${todayPlan.reason}`
+      : "No action plan available yet.";
+
+    doc.text(doc.splitTextToSize(todayText, 180), 14, y + 8);
 
     y += 35;
 
@@ -889,6 +957,46 @@ export default function Home() {
             </div>
 
             <p className="text-gray-300">{insights.recommendation}</p>
+          </div>
+        )}
+
+        {todayPlan && (
+          <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+            <h2 className="text-2xl font-semibold mb-4 text-green-400">
+              Today's AI Action Plan
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Subject</p>
+                <h3 className="text-xl font-bold text-white">
+                  {todayPlan.subject}
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Focus</p>
+                <h3 className="text-lg font-bold text-yellow-400">
+                  {todayPlan.focus}
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">Recommended Time</p>
+                <h3 className="text-xl font-bold text-blue-400">
+                  {todayPlan.hours} hrs
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400 text-sm">AI Priority Score</p>
+                <h3 className="text-xl font-bold text-purple-400">
+                  {todayPlan.score}
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-gray-300">{todayPlan.reason}</p>
           </div>
         )}
 
