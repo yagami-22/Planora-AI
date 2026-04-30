@@ -20,6 +20,9 @@ export default function Home() {
   const [timetable, setTimetable] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const [studyStreak, setStudyStreak] = useState(0);
+  const [completedSessions, setCompletedSessions] = useState(0);
+
   useEffect(() => {
     async function getSession() {
       const { data } = await supabase.auth.getSession();
@@ -138,6 +141,14 @@ export default function Home() {
     await supabase.from("timetables").delete().eq("user_id", user.id);
     setSubjects([]);
     setTimetable([]);
+    setStudyStreak(0);
+    setCompletedSessions(0);
+  }
+
+  function markTodayComplete() {
+    setCompletedSessions(completedSessions + 1);
+    setStudyStreak(studyStreak + 1);
+    alert("Great job! Today's study session marked complete.");
   }
 
   function getDaysLeft(date) {
@@ -363,6 +374,8 @@ export default function Home() {
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
         ["Risk Level", insights?.risk || "N/A"],
+        ["Study Streak", `${studyStreak} days`],
+        ["Completed Sessions", completedSessions],
       ],
       theme: "grid",
       headStyles: { fillColor: [88, 28, 135], textColor: [255, 255, 255] },
@@ -377,7 +390,9 @@ export default function Home() {
 
     autoTable(doc, {
       startY: y + 6,
-      head: [["Subject", "Exam Date", "Days Left", "Hours", "Priority", "Progress"]],
+      head: [
+        ["Subject", "Exam Date", "Days Left", "Hours", "Priority", "Progress"],
+      ],
       body:
         subjects.length > 0
           ? subjects.map((s) => [
@@ -461,7 +476,14 @@ export default function Home() {
               `${s.progress}%`,
               "Give extra revision and practice time",
             ])
-          : [["No weak subjects detected", "-", "-", "Current progress looks good"]],
+          : [
+              [
+                "No weak subjects detected",
+                "-",
+                "-",
+                "Current progress looks good",
+              ],
+            ],
       theme: "striped",
       headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255] },
       styles: { fontSize: 9, cellPadding: 3 },
@@ -784,6 +806,42 @@ export default function Home() {
             <p className="text-gray-300">{insights.recommendation}</p>
           </div>
         )}
+
+        <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+          <h2 className="text-2xl font-semibold mb-4 text-orange-400">
+            Consistency Tracker
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="bg-black p-4 rounded-xl">
+              <p className="text-gray-400 text-sm">Study Streak</p>
+              <h3 className="text-3xl font-bold text-orange-400">
+                {studyStreak} days
+              </h3>
+            </div>
+
+            <div className="bg-black p-4 rounded-xl">
+              <p className="text-gray-400 text-sm">Completed Sessions</p>
+              <h3 className="text-3xl font-bold text-green-400">
+                {completedSessions}
+              </h3>
+            </div>
+
+            <div className="bg-black p-4 rounded-xl">
+              <p className="text-gray-400 text-sm">Consistency Score</p>
+              <h3 className="text-3xl font-bold text-blue-400">
+                {Math.min(100, completedSessions * 10)}%
+              </h3>
+            </div>
+          </div>
+
+          <button
+            onClick={markTodayComplete}
+            className="bg-orange-500 hover:bg-orange-400 text-black px-5 py-3 rounded-xl font-semibold"
+          >
+            Mark Today Complete
+          </button>
+        </div>
 
         <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
           <h2 className="text-2xl font-semibold mb-5">Saved AI Timetable</h2>
