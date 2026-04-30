@@ -556,7 +556,48 @@ export default function Home() {
             </p>
           </div>
         )}
+{subjects.length > 0 && (
+  <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+    <h2 className="text-2xl font-semibold mb-4 text-purple-400">
+      AI Study Strategy
+    </h2>
 
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-black p-4 rounded-xl">
+        <p className="text-gray-400 text-sm">Weakest Subject</p>
+        <h3 className="text-xl font-bold text-red-400">
+          {
+            [...subjects].sort((a, b) => a.progress - b.progress)[0]
+              ?.subject_name
+          }
+        </h3>
+      </div>
+
+      <div className="bg-black p-4 rounded-xl">
+        <p className="text-gray-400 text-sm">Strongest Subject</p>
+        <h3 className="text-xl font-bold text-green-400">
+          {
+            [...subjects].sort((a, b) => b.progress - a.progress)[0]
+              ?.subject_name
+          }
+        </h3>
+      </div>
+
+      <div className="bg-black p-4 rounded-xl">
+        <p className="text-gray-400 text-sm">Best Focus Area</p>
+        <h3 className="text-xl font-bold text-yellow-400">
+          Weak Topic Recovery
+        </h3>
+      </div>
+    </div>
+
+    <p className="text-gray-300 mt-4">
+      Based on your progress, you should spend more time on low-progress
+      subjects first, revise medium-progress subjects regularly, and use
+      stronger subjects for quick tests instead of long theory sessions.
+    </p>
+  </div>
+)}
         <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
           <h2 className="text-2xl font-semibold mb-5 text-red-400">
             Weak Subject Analysis
