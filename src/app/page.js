@@ -186,6 +186,7 @@ export default function Home() {
   async function clearAllData() {
     await supabase.from("subjects").delete().eq("user_id", user.id);
     await supabase.from("timetables").delete().eq("user_id", user.id);
+    await supabase.from("study_sessions").delete().eq("user_id", user.id);
 
     await supabase
       .from("study_stats")
@@ -235,8 +236,59 @@ export default function Home() {
     setStudyStreak(data.study_streak || 0);
     setCompletedSessions(data.completed_sessions || 0);
     setLastCompletedDate(data.last_completed_date || "");
+  }
 
-    alert("Great job! Today's study session marked complete.");
+  async function updateTodayPlanStatus(status) {
+    if (!user || !todayPlan) {
+      alert("User or today's plan not found");
+      return;
+    }
+
+    const selectedSubject = subjects.find(
+      (s) => s.subject_name === todayPlan.subject
+    );
+
+    if (!selectedSubject) {
+      alert("Subject not found for today's plan");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/complete-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          subject_id: selectedSubject.id,
+          subject_name: todayPlan.subject,
+          planned_minutes: todayPlan.hours * 60,
+          status,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(result.error || "Failed to update today's plan status");
+        return;
+      }
+
+      if (status === "completed") {
+        await markTodayComplete();
+        await fetchStudyStats(user.id);
+      }
+
+      alert(`Today's AI plan marked as ${status.replace("_", " ")}!`);
+    } catch (error) {
+      console.error("Status update error:", error);
+      alert("Something went wrong while updating today's plan status.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function getDaysLeft(date) {
@@ -996,7 +1048,33 @@ export default function Home() {
               </div>
             </div>
 
-            <p className="text-gray-300">{todayPlan.reason}</p>
+            <p className="text-gray-300 mb-4">{todayPlan.reason}</p>
+
+            <div className="flex flex-wrap gap-3 mt-4">
+              <button
+                onClick={() => updateTodayPlanStatus("in_progress")}
+                disabled={loading}
+                className="bg-blue-500 hover:bg-blue-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
+              >
+                Start Plan
+              </button>
+
+              <button
+                onClick={() => updateTodayPlanStatus("completed")}
+                disabled={loading}
+                className="bg-green-500 hover:bg-green-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
+              >
+                Complete Plan
+              </button>
+
+              <button
+                onClick={() => updateTodayPlanStatus("skipped")}
+                disabled={loading}
+                className="bg-red-500 hover:bg-red-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
+              >
+                Skip Plan
+              </button>
+            </div>
           </div>
         )}
 
