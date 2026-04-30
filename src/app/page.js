@@ -140,33 +140,38 @@ export default function Home() {
 
   async function generateTimetable() {
     if (subjects.length === 0) return alert("Add subjects first");
-
+  
     setLoading(true);
-
+  
     try {
       const today = new Date();
-
+  
       const scored = subjects.map((s) => {
         const exam = new Date(s.exam_date);
         const daysLeft = Math.max(
           1,
           Math.ceil((exam - today) / (1000 * 60 * 60 * 24))
         );
-
-        const urgencyScore = Math.max(0, 100 - daysLeft);
+  
+        const urgencyScore = Math.max(0, 100 - Math.min(daysLeft, 100));
         const weaknessScore = 100 - Number(s.progress);
         const priorityScore =
-          s.priority === "High" ? 40 : s.priority === "Medium" ? 20 : 10;
-
+          s.priority === "High" ? 30 : s.priority === "Medium" ? 18 : 8;
+  
+        const aiScore = Math.min(
+          100,
+          Math.round(urgencyScore * 0.35 + weaknessScore * 0.45 + priorityScore)
+        );
+  
         return {
           ...s,
           daysLeft,
-          aiScore: urgencyScore + weaknessScore + priorityScore,
+          aiScore,
         };
       });
-
+  
       const sorted = [...scored].sort((a, b) => b.aiScore - a.aiScore);
-
+  
       const days = [
         "Monday",
         "Tuesday",
@@ -176,38 +181,54 @@ export default function Home() {
         "Saturday",
         "Sunday",
       ];
-
+  
       const plan = days.map((day, index) => {
         const s = sorted[index % sorted.length];
-
+        const hours = Number(s.daily_hours) || Number(dailyHours) || 2;
+  
         let studyType = "Concept Study + Practice";
-
-        if (s.progress < 35) studyType = "Weak Topic Recovery";
-        else if (s.daysLeft <= 5) studyType = "Revision + PYQs";
-        else if (s.priority === "High") studyType = "High Priority Practice";
-        else if (s.progress >= 70) studyType = "Quick Revision + Test";
-
+        let timeAllocation = `${Math.max(1, hours - 1)}h concept + 1h practice`;
+  
+        if (s.progress < 35) {
+          studyType = "Weak Topic Recovery + Basics";
+          timeAllocation = `${Math.max(1, hours - 1)}h basics + 1h practice`;
+        } else if (s.daysLeft <= 5) {
+          studyType = "Revision + PYQs";
+          timeAllocation = `${Math.max(1, hours - 1)}h revision + 1h PYQs`;
+        } else if (s.priority === "High") {
+          studyType = "High Priority Practice";
+          timeAllocation = `${Math.max(1, hours - 1)}h practice + 1h recap`;
+        } else if (s.progress >= 70) {
+          studyType = "Quick Revision + Self Test";
+          timeAllocation = `${Math.max(1, hours - 1)}h revision + 1h test`;
+        }
+  
+        if (day === "Sunday") {
+          studyType = "Light Revision + Weekly Recap";
+          timeAllocation = `${Math.max(1, hours - 1)}h recap + 1h planning`;
+        }
+  
         return {
           day,
           subject: s.subject_name,
           studyType,
-          timeAllocation: `${s.daily_hours} hour(s)`,
-          reason: `${s.subject_name} selected because progress is ${s.progress}%, priority is ${s.priority}, and exam is in ${s.daysLeft} days.`,
+          timeAllocation,
+          reason: `${s.subject_name} was selected because progress is ${s.progress}%, priority is ${s.priority}, and exam is in ${s.daysLeft} days.`,
           aiScore: s.aiScore,
         };
       });
-
+  
       await supabase.from("timetables").delete().eq("user_id", user.id);
-
+  
       const { error } = await supabase.from("timetables").insert([
         {
           user_id: user.id,
           plan,
         },
       ]);
-
+  
       if (error) return alert("Failed to save timetable");
-
+  
       setTimetable(plan);
     } catch (error) {
       console.error("Timetable error:", error);
