@@ -9,7 +9,13 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
-    const { user_id, subject_id, subject_name, planned_minutes, status } = body;
+    const {
+      user_id,
+      subject_id,
+      subject_name,
+      planned_minutes,
+      status,
+    } = body;
 
     if (!user_id || !subject_id || !subject_name || !status) {
       return Response.json(
@@ -24,11 +30,12 @@ export async function POST(req) {
       return Response.json({ error: "Invalid status" }, { status: 400 });
     }
 
+    const today = new Date().toISOString().split("T")[0];
     const isCompleted = status === "completed";
 
     const { data, error } = await supabase
       .from("study_sessions")
-      .insert([
+      .upsert(
         {
           user_id,
           subject_id,
@@ -37,12 +44,17 @@ export async function POST(req) {
           completed_minutes: isCompleted ? planned_minutes || 60 : 0,
           is_completed: isCompleted,
           status,
+          session_date: today,
           updated_at: new Date().toISOString(),
         },
-      ])
+        {
+          onConflict: "user_id,subject_id,session_date",
+        }
+      )
       .select();
 
     if (error) {
+      console.error(error);
       return Response.json({ error: error.message }, { status: 500 });
     }
 
@@ -52,6 +64,7 @@ export async function POST(req) {
       data,
     });
   } catch (err) {
+    console.error(err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
