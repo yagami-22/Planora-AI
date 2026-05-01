@@ -442,6 +442,20 @@ export default function Home() {
       return "⚠️ Low consistency detected. Reduce load and focus on small wins.";
     }
   }
+  function getTrendMessage() {
+    if (sessionChartData.length < 2) return "";
+  
+    const last = sessionChartData[sessionChartData.length - 1].completed;
+    const prev = sessionChartData[sessionChartData.length - 2].completed;
+  
+    if (last > prev) {
+      return "📈 You're improving! Keep the momentum going.";
+    } else if (last < prev) {
+      return "📉 Performance dropped. Try to stay consistent.";
+    } else {
+      return "➡️ No change in performance.";
+    }
+  }
 
   function generateTodayPlan() {
     if (subjects.length === 0) return null;
@@ -1254,7 +1268,9 @@ if (behavior === "low_consistency") {
   <h2 className="text-2xl font-semibold mb-4 text-purple-400">
     Study Session Analytics
   </h2>
-
+  <p className="text-sm text-green-400 mb-3">
+  {getTrendMessage()}
+</p>
   {sessionChartData.length === 0 ? (
     <p className="text-gray-500">No session data available yet.</p>
   ) : (
