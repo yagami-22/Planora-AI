@@ -12,6 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+
 export default function Home() {
   const [user, setUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
@@ -32,27 +33,35 @@ export default function Home() {
   const [lastCompletedDate, setLastCompletedDate] = useState("");
   const [completionRate, setCompletionRate] = useState(0);
   const [sessionChartData, setSessionChartData] = useState([]);
+
+  const [selectedTimerSubjectId, setSelectedTimerSubjectId] = useState("");
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerStartTime, setTimerStartTime] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [todayStudyMinutes, setTodayStudyMinutes] = useState(0);
+  const [subjectStudyMinutes, setSubjectStudyMinutes] = useState([]);
+
   useEffect(() => {
     async function getSession() {
       const { data } = await supabase.auth.getSession();
       setUser(data.session?.user || null);
     }
-  
+
     getSession();
-  
+
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user || null);
       }
     );
-  
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("/sw.js")
         .then(() => console.log("Service Worker Registered"))
         .catch((err) => console.log("SW error:", err));
     }
-  
+
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -62,6 +71,7 @@ export default function Home() {
       fetchTimetable(user.id);
       fetchStudyStats(user.id);
       fetchSessionStats(user.id);
+      fetchTimerStats(user.id);
     } else {
       setSubjects([]);
       setTimetable([]);
@@ -70,8 +80,27 @@ export default function Home() {
       setLastCompletedDate("");
       setCompletionRate(0);
       setSessionChartData([]);
+      setTodayStudyMinutes(0);
+      setSubjectStudyMinutes([]);
+      setSelectedTimerSubjectId("");
+      setTimerRunning(false);
+      setTimerStartTime(null);
+      setElapsedSeconds(0);
     }
   }, [user]);
+
+  useEffect(() => {
+    let interval;
+
+    if (timerRunning && timerStartTime) {
+      interval = setInterval(() => {
+        const seconds = Math.floor((new Date() - new Date(timerStartTime)) / 1000);
+        setElapsedSeconds(seconds);
+      }, 1000);
+    }
+
+    return () => clearInterval(interval);
+  }, [timerRunning, timerStartTime]);
 
   async function signUp() {
     const { error } = await supabase.auth.signUp({ email, password });
@@ -162,44 +191,77 @@ export default function Home() {
       .from("study_sessions")
       .select("status, created_at")
       .eq("user_id", userId);
-  
+
     if (error) {
       console.error(error);
       return;
     }
-  
+
     const today = new Date();
     const last7Days = [];
-  
+
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(today.getDate() - i);
       const day = d.toISOString().split("T")[0];
-  
+
       const completed = data.filter(
-        (s) =>
-          s.status === "completed" &&
-          s.created_at.startsWith(day)
+        (s) => s.status === "completed" && s.created_at.startsWith(day)
       ).length;
-  
+
       last7Days.push({
-        day: day.slice(5), // MM-DD
+        day: day.slice(5),
         completed,
       });
     }
-  
+
     setSessionChartData(last7Days);
-  
+
     const total = data.length;
-    const completedTotal = data.filter(
-      (s) => s.status === "completed"
-    ).length;
-  
+    const completedTotal = data.filter((s) => s.status === "completed").length;
+
     setCompletionRate(
       total === 0 ? 0 : Math.round((completedTotal / total) * 100)
     );
   }
-    
+
+  async function fetchTimerStats(userId) {
+    const { data, error } = await supabase
+      .from("study_timer_sessions")
+      .select("subject_name, actual_minutes, created_at")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Timer stats fetch error:", error);
+      return;
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    const todaySessions = (data || []).filter((s) =>
+      s.created_at?.startsWith(today)
+    );
+
+    const totalMinutes = todaySessions.reduce(
+      (sum, s) => sum + Number(s.actual_minutes || 0),
+      0
+    );
+
+    const subjectMap = {};
+
+    todaySessions.forEach((s) => {
+      subjectMap[s.subject_name] =
+        (subjectMap[s.subject_name] || 0) + Number(s.actual_minutes || 0);
+    });
+
+    const subjectData = Object.keys(subjectMap).map((name) => ({
+      subject: name,
+      minutes: subjectMap[name],
+    }));
+
+    setTodayStudyMinutes(totalMinutes);
+    setSubjectStudyMinutes(subjectData);
+  }
 
   async function addSubject() {
     if (!subjectName || !examDate || !dailyHours || progress === "") {
@@ -263,6 +325,7 @@ export default function Home() {
     await supabase.from("subjects").delete().eq("user_id", user.id);
     await supabase.from("timetables").delete().eq("user_id", user.id);
     await supabase.from("study_sessions").delete().eq("user_id", user.id);
+    await supabase.from("study_timer_sessions").delete().eq("user_id", user.id);
 
     await supabase
       .from("study_stats")
@@ -280,7 +343,12 @@ export default function Home() {
     setLastCompletedDate("");
     setCompletionRate(0);
     setSessionChartData([]);
-
+    setTodayStudyMinutes(0);
+    setSubjectStudyMinutes([]);
+    setSelectedTimerSubjectId("");
+    setTimerRunning(false);
+    setTimerStartTime(null);
+    setElapsedSeconds(0);
   }
 
   async function saveTodayCompletionStats() {
@@ -387,6 +455,94 @@ export default function Home() {
     }
   }
 
+  function startStudyTimer() {
+    if (!selectedTimerSubjectId) {
+      return alert("Select a subject first");
+    }
+
+    if (timerRunning) {
+      return alert("Timer is already running");
+    }
+
+    setTimerStartTime(new Date());
+    setElapsedSeconds(0);
+    setTimerRunning(true);
+  }
+
+  async function stopAndSaveTimer() {
+    if (!timerRunning || !timerStartTime) {
+      return alert("Timer is not running");
+    }
+
+    const selectedSubject = subjects.find(
+      (s) => String(s.id) === String(selectedTimerSubjectId)
+    );
+
+    if (!selectedSubject) {
+      return alert("Selected subject not found");
+    }
+
+    const endedAt = new Date();
+    const actualMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/study-timer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          subject_id: selectedSubject.id,
+          subject_name: selectedSubject.subject_name,
+          started_at: new Date(timerStartTime).toISOString(),
+          ended_at: endedAt.toISOString(),
+          actual_minutes: actualMinutes,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(result.error || "Failed to save timer session");
+        return;
+      }
+
+      setTimerRunning(false);
+      setTimerStartTime(null);
+      setElapsedSeconds(0);
+      await fetchTimerStats(user.id);
+
+      alert(`Study timer saved: ${actualMinutes} minute(s)`);
+    } catch (error) {
+      console.error("Timer save error:", error);
+      alert("Something went wrong while saving timer.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function formatTimer(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
+      2,
+      "0"
+    )}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function formatMinutes(minutes) {
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    if (hrs === 0) return `${mins} min`;
+    return `${hrs}h ${mins}m`;
+  }
+
   function getDaysLeft(date) {
     return Math.max(
       1,
@@ -431,6 +587,7 @@ export default function Home() {
           : "Good progress. Focus on revision, mock tests, and speed improvement.",
     };
   }
+
   function getUserBehavior() {
     if (completionRate >= 80) {
       return "high_performer";
@@ -440,6 +597,7 @@ export default function Home() {
       return "low_consistency";
     }
   }
+
   function getConsistencyMessage() {
     if (completionRate >= 80) {
       return "🔥 Excellent consistency! You're on track for success.";
@@ -449,12 +607,13 @@ export default function Home() {
       return "⚠️ Low consistency detected. Reduce load and focus on small wins.";
     }
   }
+
   function getTrendMessage() {
     if (sessionChartData.length < 2) return "";
-  
+
     const last = sessionChartData[sessionChartData.length - 1].completed;
     const prev = sessionChartData[sessionChartData.length - 2].completed;
-  
+
     if (last > prev) {
       return "📈 You're improving! Keep the momentum going.";
     } else if (last < prev) {
@@ -495,13 +654,14 @@ export default function Home() {
     const best = scored.sort((a, b) => b.todayScore - a.todayScore)[0];
     const behavior = getUserBehavior();
 
-let adjustedHours = Number(best.daily_hours) || 2;
+    let adjustedHours = Number(best.daily_hours) || 2;
 
-if (behavior === "low_consistency") {
-  adjustedHours = Math.max(1, adjustedHours - 1);
-} else if (behavior === "high_performer") {
-  adjustedHours = adjustedHours + 1;
-}
+    if (behavior === "low_consistency") {
+      adjustedHours = Math.max(1, adjustedHours - 1);
+    } else if (behavior === "high_performer") {
+      adjustedHours = adjustedHours + 1;
+    }
+
     let focus = "Concept Study + Practice";
     let reason = `${best.subject_name} is selected because progress is ${best.progress}%, priority is ${best.priority}, and exam is in ${best.daysLeft} days.`;
 
@@ -696,6 +856,7 @@ if (behavior === "low_consistency") {
         ["Weak Subjects", weakSubjects.length],
         ["Average Progress", `${averageProgress}%`],
         ["Completion Rate", `${completionRate}%`],
+        ["Today Study Time", formatMinutes(todayStudyMinutes)],
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
         ["Risk Level", insights?.risk || "N/A"],
@@ -765,101 +926,6 @@ if (behavior === "low_consistency") {
       headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255] },
       styles: { fontSize: 8.5, cellPadding: 3 },
     });
-
-    y = doc.lastAutoTable.finalY + 12;
-
-    if (y > 220) {
-      doc.addPage();
-      addHeader("AI Insights");
-      y = 40;
-    }
-
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("AI Insights", 14, y);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-
-    const insightText = insights
-      ? `Risk Level: ${insights.risk}. ${insights.recommendation}`
-      : "No AI insights available yet.";
-
-    doc.text(doc.splitTextToSize(insightText, 180), 14, y + 8);
-
-    y += 30;
-
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("Today's AI Action Plan", 14, y);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    const todayText = todayPlan
-      ? `${todayPlan.subject}: ${todayPlan.focus}. Recommended time: ${todayPlan.hours} hours. ${todayPlan.reason}`
-      : "No action plan available yet.";
-
-    doc.text(doc.splitTextToSize(todayText, 180), 14, y + 8);
-
-    y += 35;
-
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("Weak Subject Analysis", 14, y);
-
-    autoTable(doc, {
-      startY: y + 6,
-      head: [["Weak Subject", "Priority", "Progress", "Suggestion"]],
-      body:
-        weakSubjects.length > 0
-          ? weakSubjects.map((s) => [
-              s.subject_name,
-              s.priority,
-              `${s.progress}%`,
-              "Give extra revision and practice time",
-            ])
-          : [
-              [
-                "No weak subjects detected",
-                "-",
-                "-",
-                "Current progress looks good",
-              ],
-            ],
-      theme: "striped",
-      headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255] },
-      styles: { fontSize: 9, cellPadding: 3 },
-    });
-
-    y = doc.lastAutoTable.finalY + 12;
-
-    if (timetable.length > 0) {
-      if (y > 220) {
-        doc.addPage();
-        addHeader("Reasoning");
-        y = 40;
-      }
-
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("Timetable Reasoning", 14, y);
-
-      autoTable(doc, {
-        startY: y + 6,
-        head: [["Day", "Reason"]],
-        body: timetable.map((item) => [
-          item.day,
-          item.reason || "Based on priority, progress, and exam date.",
-        ]),
-        theme: "grid",
-        headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255] },
-        styles: { fontSize: 8.5, cellPadding: 3 },
-        columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 155 },
-        },
-      });
-    }
 
     addFooter();
     doc.save("Planora_AI_Study_Report.pdf");
@@ -1010,7 +1076,7 @@ if (behavior === "low_consistency") {
           <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
             <h2 className="text-2xl font-semibold mb-5">Dashboard Overview</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
               <div className="bg-black p-4 rounded-xl">
                 <p className="text-gray-400">Total Subjects</p>
                 <h3 className="text-3xl font-bold">{subjects.length}</h3>
@@ -1034,6 +1100,13 @@ if (behavior === "low_consistency") {
                 <p className="text-gray-400">Completion Rate</p>
                 <h3 className="text-3xl font-bold text-purple-400">
                   {completionRate}%
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400">Today Study Time</p>
+                <h3 className="text-3xl font-bold text-blue-400">
+                  {formatMinutes(todayStudyMinutes)}
                 </h3>
               </div>
             </div>
@@ -1119,6 +1192,83 @@ if (behavior === "low_consistency") {
           </div>
         </div>
 
+        <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+          <h2 className="text-2xl font-semibold mb-4 text-cyan-400">
+            Study Timer
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <div className="bg-black p-4 rounded-xl">
+              <p className="text-gray-400 text-sm mb-2">Select Subject</p>
+              <select
+                className="w-full p-3 bg-zinc-900 border border-zinc-700 rounded-xl"
+                value={selectedTimerSubjectId}
+                onChange={(e) => setSelectedTimerSubjectId(e.target.value)}
+                disabled={timerRunning}
+              >
+                <option value="">Choose subject</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.subject_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-black p-4 rounded-xl text-center">
+              <p className="text-gray-400 text-sm mb-2">Live Timer</p>
+              <h3 className="text-4xl font-bold text-cyan-400">
+                {formatTimer(elapsedSeconds)}
+              </h3>
+              <p className="text-xs text-gray-500 mt-2">
+                {timerRunning ? "Timer running..." : "Timer stopped"}
+              </p>
+            </div>
+
+            <div className="bg-black p-4 rounded-xl">
+              <p className="text-gray-400 text-sm">Today Total Study</p>
+              <h3 className="text-3xl font-bold text-green-400">
+                {formatMinutes(todayStudyMinutes)}
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mb-5">
+            <button
+              onClick={startStudyTimer}
+              disabled={loading || timerRunning || subjects.length === 0}
+              className="bg-cyan-500 hover:bg-cyan-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
+            >
+              Start Study Timer
+            </button>
+
+            <button
+              onClick={stopAndSaveTimer}
+              disabled={loading || !timerRunning}
+              className="bg-green-500 hover:bg-green-400 text-black px-5 py-3 rounded-xl font-semibold disabled:opacity-60"
+            >
+              Stop & Save
+            </button>
+          </div>
+
+          <h3 className="text-lg font-semibold mb-3">Today Subject-wise Study</h3>
+
+          {subjectStudyMinutes.length === 0 ? (
+            <p className="text-gray-500">No timer study data saved today.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {subjectStudyMinutes.map((item) => (
+                <div key={item.subject} className="bg-black p-4 rounded-xl">
+                  <p className="text-gray-400 text-sm">{item.subject}</p>
+                  <h4 className="text-xl font-bold text-cyan-400">
+                    {formatMinutes(item.minutes)}
+                  </h4>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {insights && (
           <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
             <h2 className="text-2xl font-semibold mb-4 text-blue-400">
@@ -1165,9 +1315,11 @@ if (behavior === "low_consistency") {
             <h2 className="text-2xl font-semibold mb-4 text-green-400">
               Today's AI Action Plan
             </h2>
+
             <p className="text-sm text-orange-400 mb-4">
-  {getConsistencyMessage()}
-</p>
+              {getConsistencyMessage()}
+            </p>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="bg-black p-4 rounded-xl">
                 <p className="text-gray-400 text-sm">Subject</p>
@@ -1199,9 +1351,10 @@ if (behavior === "low_consistency") {
             </div>
 
             <p className="text-gray-300 mb-4">{todayPlan.reason}</p>
+
             <p className="text-sm text-purple-400 mb-4">
-  Adaptive Mode: {getUserBehavior().replace("_", " ")}
-</p>
+              Adaptive Mode: {getUserBehavior().replace("_", " ")}
+            </p>
 
             <div className="flex flex-wrap gap-3 mt-4">
               <button
@@ -1271,34 +1424,35 @@ if (behavior === "low_consistency") {
             Mark Today Complete
           </button>
         </div>
+
         <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
-  <h2 className="text-2xl font-semibold mb-4 text-purple-400">
-    Study Session Analytics
-  </h2>
-  <p className="text-sm text-green-400 mb-3">
-  {getTrendMessage()}
-</p>
-  {sessionChartData.length === 0 ? (
-    <p className="text-gray-500">No session data available yet.</p>
-  ) : (
-    <div className="w-full h-72 bg-black p-4 rounded-xl">
-      <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={sessionChartData}>
-  <XAxis dataKey="day" stroke="#9ca3af" />
-  <YAxis stroke="#9ca3af" allowDecimals={false} />
-  <Tooltip />
-  <Line
-    type="monotone"
-    dataKey="completed"
-    stroke="#a855f7"
-    strokeWidth={3}
-  />
-</LineChart>
-      </ResponsiveContainer>
-    </div>
-  )}
-</div>
-       
+          <h2 className="text-2xl font-semibold mb-4 text-purple-400">
+            Study Session Analytics
+          </h2>
+
+          <p className="text-sm text-green-400 mb-3">{getTrendMessage()}</p>
+
+          {sessionChartData.length === 0 ? (
+            <p className="text-gray-500">No session data available yet.</p>
+          ) : (
+            <div className="w-full h-72 bg-black p-4 rounded-xl">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sessionChartData}>
+                  <XAxis dataKey="day" stroke="#9ca3af" />
+                  <YAxis stroke="#9ca3af" allowDecimals={false} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="completed"
+                    stroke="#a855f7"
+                    strokeWidth={3}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
         <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
           <h2 className="text-2xl font-semibold mb-5">Saved AI Timetable</h2>
 
