@@ -20,7 +20,6 @@ export async function POST(req) {
       actual_seconds,
     } = body;
 
-    // ✅ Validation
     if (!user_id || !subject_id || !started_at || !ended_at) {
       return NextResponse.json(
         { error: "Missing required fields" },
@@ -28,23 +27,37 @@ export async function POST(req) {
       );
     }
 
-    const { error } = await supabase.from("study_timer_sessions").insert([
-      {
-        user_id,
-        subject_id,
-        subject_name,
-        started_at,
-        ended_at,
-        actual_minutes,
-        actual_seconds,
-      },
-    ]);
+    const { error: timerError } = await supabase
+      .from("study_timer_sessions")
+      .insert([
+        {
+          user_id,
+          subject_id,
+          subject_name,
+          started_at,
+          ended_at,
+          actual_minutes,
+          actual_seconds,
+        },
+      ]);
 
-    if (error) {
+    if (timerError) {
       return NextResponse.json(
-        { error: error.message },
+        { error: timerError.message },
         { status: 500 }
       );
+    }
+
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        is_studying: false,
+        last_active: new Date().toISOString(),
+      })
+      .eq("id", user_id);
+
+    if (profileError) {
+      console.error("Profile update error:", profileError);
     }
 
     return NextResponse.json({ success: true });

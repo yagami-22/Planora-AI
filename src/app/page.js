@@ -111,6 +111,16 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
 
     return () => clearInterval(interval);
   }, [timerRunning, timerStartTime]);
+
+  useEffect(() => {
+    if (!selectedGroupId) return;
+
+    const interval = setInterval(() => {
+      fetchGroupLeaderboard(selectedGroupId);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedGroupId]);
   async function ensureUserProfile(currentUser) {
     const { data, error } = await supabase
       .from("profiles")
@@ -229,21 +239,24 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
   
   async function fetchGroupLeaderboard(groupId) {
     if (!groupId) return;
-  
+
     const today = new Date().toISOString().split("T")[0];
-  
+
     const { data, error } = await supabase
       .from("group_leaderboard")
-      .select("*")
+      .select(`
+        *,
+        profiles(display_name, is_studying, study_streak)
+      `)
       .eq("group_id", groupId)
       .eq("study_date", today)
       .order("total_seconds", { ascending: false });
-  
+
     if (error) {
       console.error("Group leaderboard fetch error:", error);
       return;
     }
-  
+
     setGroupLeaderboard(data || []);
   }
   
@@ -484,8 +497,7 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
           subject_name: subjectName,
           exam_date: examDate,
           daily_hours: hoursNumber,
-          priority,
-          progress: progressNumber,
+          priority,          progress: progressNumber,
           user_id: user.id,
         },
       ])
@@ -651,7 +663,7 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     }
   }
 
-  function startStudyTimer() {
+  async function startStudyTimer() {
     if (!selectedTimerSubjectId) {
       return alert("Select a subject first");
     }
@@ -663,6 +675,18 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     setTimerStartTime(new Date());
     setElapsedSeconds(0);
     setTimerRunning(true);
+
+    await supabase
+      .from("profiles")
+      .update({
+        is_studying: true,
+        last_active: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (selectedGroupId) {
+      await fetchGroupLeaderboard(selectedGroupId);
+    }
   }
 
   async function stopAndSaveTimer() {
@@ -722,8 +746,20 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
       setTimerStartTime(null);
       setElapsedSeconds(0);
 
+      await supabase
+        .from("profiles")
+        .update({
+          is_studying: false,
+          last_active: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
       await fetchTimerStats(user.id);
       await fetchLeaderboard();
+
+      if (selectedGroupId) {
+        await fetchGroupLeaderboard(selectedGroupId);
+      }
 
       alert(`Study timer saved: ${formatStudyDuration(actualSeconds)}`);
     } catch (error) {
@@ -961,9 +997,7 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
         } else if (s.progress >= 70) {
           studyType = "Quick Revision + Self Test";
           timeAllocation = `${Math.max(1, hours - 1)}h revision + 1h test`;
-        }
-
-        if (day === "Sunday") {
+        }        if (day === "Sunday") {
           studyType = "Light Revision + Weekly Recap";
           timeAllocation = `${Math.max(1, hours - 1)}h recap + 1h planning`;
         }
@@ -1619,33 +1653,108 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
       No study data in this group today yet.
     </p>
   ) : (
-    <div className="space-y-3">
-      {groupLeaderboard.map((item, index) => {
-        const medal =
-          index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`;
+    <>
+      {groupLeaderboard.length > 0 && (
+        <div className="mb-3 text-center text-green-400 font-bold">
+          🏆 Today's Winner:{" "}
+          {groupLeaderboard[0]?.profiles?.display_name ||
+            groupLeaderboard[0]?.display_name ||
+            "Student"}
+        </div>
+      )}
 
-        return (
-          <div
-            key={item.user_id}
-            className={`p-4 rounded-xl flex justify-between items-center ${
-              item.user_id === user.id
-                ? "bg-pink-900/40 border border-pink-500"
-                : "bg-black"
-            }`}
-          >
-            <div>
-              <h3 className="text-lg font-bold">
-                {medal} {item.display_name || "Student"}
-              </h3>
+      {groupLeaderboard.length > 1 && (
+        <div className="bg-yellow-900/30 p-3 rounded-xl mb-3 text-yellow-300">
+          ⚠️ You are{" "}
+          {Math.max(
+            0,
+            Math.floor(
+              ((groupLeaderboard[0]?.total_seconds || 0) -
+                (groupLeaderboard.find((x) => x.user_id === user.id)
+                  ?.total_seconds || 0)) /
+                60
+            )
+          )}{" "}
+          minutes behind #1
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {groupLeaderboard.map((item, index) => {
+          const medal =
+            index === 0
+              ? "🥇"
+              : index === 1
+              ? "🥈"
+              : index === 2
+              ? "🥉"
+              : `#${index + 1}`;
+
+          const displayName =
+            item.profiles?.display_name || item.display_name || "Student";
+
+          const progressWidth = Math.min(
+            100,
+            Math.max(
+              0,
+              (Number(item.total_seconds || 0) /
+                Number(groupLeaderboard[0]?.total_seconds || 1)) *
+                100
+            )
+          );
+
+          return (
+            <div
+              key={item.user_id}
+              className={`p-4 rounded-xl ${
+                item.user_id === user.id
+                  ? "bg-pink-900/40 border border-pink-500"
+                  : "bg-black"
+              }`}
+            >
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                <div>
+                  <h3 className="text-lg font-bold flex items-center gap-2 flex-wrap">
+                    {medal} {displayName}
+
+                    {item.profiles?.is_studying ? (
+                      <span className="text-green-400 text-sm animate-pulse">
+                        🟢 Studying
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 text-sm">
+                        ⚫ Offline
+                      </span>
+                    )}
+                  </h3>
+
+                  <span className="text-orange-400 text-sm">
+                    🔥 {item.profiles?.study_streak || item.study_streak || 0} day
+                    streak
+                  </span>
+                </div>
+
+                <h3 className="text-2xl font-bold text-green-400">
+                  {formatStudyDuration(Number(item.total_seconds || 0))}
+                </h3>
+              </div>
+
+              <div className="w-full bg-zinc-800 h-2 rounded mt-3">
+                <div
+                  className="bg-green-400 h-2 rounded"
+                  style={{ width: `${progressWidth}%` }}
+                />
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            <h3 className="text-2xl font-bold text-green-400">
-              {formatStudyDuration(Number(item.total_seconds || 0))}
-            </h3>
-          </div>
-        );
-      })}
-    </div>
+      <div className="text-sm text-gray-400 mt-3">
+        🔥 Most active study time in your group: 7PM–9PM <br />
+        ⚠️ Group productivity dropped 12% compared to yesterday
+      </div>
+    </>
   )}
 </div>
         {insights && (
