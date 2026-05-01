@@ -53,7 +53,6 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     }
 
     getSession();
-
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user || null);
@@ -112,8 +111,10 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     return () => clearInterval(interval);
   }, [timerRunning, timerStartTime]);
   useEffect(() => {
+    if (!user) return;
+  
     const channel = supabase
-      .channel("realtime-profiles")
+      .channel("realtime-study-updates")
       .on(
         "postgres_changes",
         {
@@ -123,6 +124,26 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
         },
         async () => {
           await fetchLeaderboard();
+  
+          if (selectedGroupId) {
+            await fetchGroupLeaderboard(selectedGroupId);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "study_timer_sessions",
+        },
+        async () => {
+          await fetchLeaderboard();
+          await fetchTimerStats(user.id);
+  
+          if (selectedGroupId) {
+            await fetchGroupLeaderboard(selectedGroupId);
+          }
         }
       )
       .subscribe();
@@ -130,17 +151,7 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!selectedGroupId) return;
-
-    const interval = setInterval(() => {
-      fetchGroupLeaderboard(selectedGroupId);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [selectedGroupId]);
+  }, [user, selectedGroupId]);
   async function ensureUserProfile(currentUser) {
     const { data, error } = await supabase
       .from("profiles")
@@ -1487,18 +1498,40 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
               </select>
             </div>
 
-            <div className="bg-black p-4 rounded-xl text-center">
-              <p className="text-gray-400 text-sm mb-2">Live Timer</p>
-              <h3 className="text-4xl font-bold text-cyan-400">
-                {formatTimer(elapsedSeconds)}
-              </h3>
-              <p className="text-xs text-gray-500 mt-2">
-                {timerRunning
-                  ? `Current session: ${formatStudyDuration(elapsedSeconds)}`
-                  : "Timer stopped"}
-              </p>
-            </div>
+            <div
+  className={`bg-black p-5 rounded-xl text-center border transition-all duration-300 ${
+    timerRunning
+      ? "border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.45)] scale-[1.02]"
+      : "border-zinc-800"
+  }`}
+>
+  <div className="flex justify-center items-center gap-2 mb-2">
+    <span
+      className={`h-3 w-3 rounded-full ${
+        timerRunning
+          ? "bg-cyan-400 animate-pulse shadow-[0_0_12px_#22d3ee]"
+          : "bg-zinc-600"
+      }`}
+    ></span>
+    <p className="text-gray-400 text-sm">
+      {timerRunning ? "Focus Mode Active" : "Live Timer"}
+    </p>
+  </div>
 
+  <h3
+    className={`text-5xl font-black tracking-wider ${
+      timerRunning ? "text-cyan-300 animate-pulse" : "text-cyan-400"
+    }`}
+  >
+    {formatTimer(elapsedSeconds)}
+  </h3>
+
+  <p className="text-xs text-gray-500 mt-3">
+    {timerRunning
+      ? `Current session: ${formatStudyDuration(elapsedSeconds)}`
+      : "Timer stopped"}
+  </p>
+</div>
             <div className="bg-black p-4 rounded-xl">
               <p className="text-gray-400 text-sm">Today Total Study</p>
               <h3 className="text-3xl font-bold text-green-400">
@@ -1566,36 +1599,84 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
     </div>
   </div>
 
+
   {leaderboard.length === 0 ? (
-    <p className="text-gray-500">No one has studied today yet.</p>
-  ) : (
-    <div className="space-y-3">
-      {leaderboard.map((item, index) => (
+  <p className="text-gray-500">No one has studied today yet.</p>
+) : (
+  <div className="space-y-4">
+    {leaderboard.map((item, index) => {
+      const medal =
+        index === 0
+          ? "🥇"
+          : index === 1
+          ? "🥈"
+          : index === 2
+          ? "🥉"
+          : `#${index + 1}`;
+
+      const progressWidth = Math.min(
+        100,
+        Math.max(
+          5,
+          (Number(item.total_seconds || 0) /
+            Number(leaderboard[0]?.total_seconds || 1)) *
+            100
+        )
+      );
+
+      return (
         <div
           key={item.user_id}
-          className={`p-4 rounded-xl flex justify-between items-center ${
+          className={`p-5 rounded-2xl border transition-all duration-300 ${
             item.user_id === user.id
-              ? "bg-yellow-900/40 border border-yellow-500"
-              : "bg-black"
+              ? "bg-yellow-900/30 border-yellow-400 shadow-[0_0_18px_rgba(250,204,21,0.25)]"
+              : index === 0
+              ? "bg-gradient-to-r from-yellow-950/60 to-black border-yellow-700"
+              : "bg-black border-zinc-800"
           }`}
         >
-          <div>
-            <h3 className="text-lg font-bold">
-              #{index + 1} {item.display_name || item.email || "Student"}
-            </h3>
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+            <div>
+              <h3 className="text-xl font-black flex items-center gap-2 flex-wrap">
+                <span>{medal}</span>
+                <span>{item.display_name || item.email || "Student"}</span>
 
-            <p className="text-gray-400 text-sm">
-              Sessions: {item.sessions_count}
-            </p>
+                {item.user_id === user.id && (
+                  <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded-full">
+                    You
+                  </span>
+                )}
+              </h3>
+
+              <div className="flex items-center gap-3 mt-2">
+                <p className="text-gray-400 text-sm">
+                  Sessions: {item.sessions_count}
+                </p>
+
+                <span className="text-xs text-green-400">
+                  ⚡ Live score
+                </span>
+              </div>
+            </div>
+
+            <h3 className="text-3xl font-black text-green-400">
+              {formatStudyDuration(Number(item.total_seconds || 0))}
+            </h3>
           </div>
 
-          <h3 className="text-2xl font-bold text-green-400">
-            {formatStudyDuration(Number(item.total_seconds || 0))}
-          </h3>
+          <div className="w-full bg-zinc-800 h-2.5 rounded-full mt-4 overflow-hidden">
+            <div
+              className={`h-2.5 rounded-full ${
+                index === 0 ? "bg-yellow-400" : "bg-green-400"
+              }`}
+              style={{ width: `${progressWidth}%` }}
+            ></div>
+          </div>
         </div>
-      ))}
-    </div>
-  )}
+      );
+    })}
+  </div>
+)}
 </div>
 <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
   <h2 className="text-2xl font-semibold mb-4 text-pink-400">
