@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -17,8 +18,9 @@ export async function POST(req) {
       status,
     } = body;
 
-    if (!user_id || !subject_id || !subject_name || !status) {
-      return Response.json(
+    // 🔴 Strict validation
+    if (!user_id || !subject_id || !status) {
+      return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
@@ -27,44 +29,51 @@ export async function POST(req) {
     const allowedStatuses = ["pending", "in_progress", "completed", "skipped"];
 
     if (!allowedStatuses.includes(status)) {
-      return Response.json({ error: "Invalid status" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid status value" },
+        { status: 400 }
+      );
     }
 
     const today = new Date().toISOString().split("T")[0];
-    const isCompleted = status === "completed";
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("study_sessions")
       .upsert(
-        {
-          user_id,
-          subject_id,
-          subject_name,
-          planned_minutes: planned_minutes || 60,
-          completed_minutes: isCompleted ? planned_minutes || 60 : 0,
-          is_completed: isCompleted,
-          status,
-          session_date: today,
-          updated_at: new Date().toISOString(),
-        },
+        [
+          {
+            user_id,
+            subject_id,
+            subject_name: subject_name || "",
+            planned_minutes: planned_minutes || 0,
+            status,
+            session_date: today,
+            updated_at: new Date().toISOString(),
+          },
+        ],
         {
           onConflict: "user_id,subject_id,session_date",
         }
-      )
-      .select();
+      );
 
     if (error) {
-      console.error(error);
-      return Response.json({ error: error.message }, { status: 500 });
+      console.error("Supabase error:", error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
 
-    return Response.json({
+    return NextResponse.json({
       success: true,
-      message: `Plan marked as ${status}`,
-      data,
+      message: "Session updated successfully",
     });
+
   } catch (err) {
-    console.error(err);
-    return Response.json({ error: err.message }, { status: 500 });
+    console.error("Server error:", err);
+    return NextResponse.json(
+      { error: err.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
