@@ -23,6 +23,7 @@ export default function Home() {
   const [studyStreak, setStudyStreak] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [lastCompletedDate, setLastCompletedDate] = useState("");
+  const [completionRate, setCompletionRate] = useState(0);
 
   useEffect(() => {
     async function getSession() {
@@ -46,12 +47,14 @@ export default function Home() {
       fetchSubjects(user.id);
       fetchTimetable(user.id);
       fetchStudyStats(user.id);
+      fetchSessionStats(user.id);
     } else {
       setSubjects([]);
       setTimetable([]);
       setStudyStreak(0);
       setCompletedSessions(0);
       setLastCompletedDate("");
+      setCompletionRate(0);
     }
   }, [user]);
 
@@ -139,6 +142,25 @@ export default function Home() {
     setLastCompletedDate(data.last_completed_date || "");
   }
 
+  async function fetchSessionStats(userId) {
+    const { data, error } = await supabase
+      .from("study_sessions")
+      .select("status")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Fetch session stats error:", error);
+      return;
+    }
+
+    const total = data?.length || 0;
+    const completed =
+      data?.filter((session) => session.status === "completed").length || 0;
+
+    const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+    setCompletionRate(rate);
+  }
+
   async function addSubject() {
     if (!subjectName || !examDate || !dailyHours || progress === "") {
       return alert("Fill all fields");
@@ -216,6 +238,7 @@ export default function Home() {
     setStudyStreak(0);
     setCompletedSessions(0);
     setLastCompletedDate("");
+    setCompletionRate(0);
   }
 
   async function saveTodayCompletionStats() {
@@ -261,6 +284,7 @@ export default function Home() {
     }
 
     await saveTodayCompletionStats();
+    await fetchSessionStats(user.id);
     alert("Today's study marked complete!");
   }
 
@@ -309,6 +333,8 @@ export default function Home() {
         await saveTodayCompletionStats();
         await fetchStudyStats(user.id);
       }
+
+      await fetchSessionStats(user.id);
 
       alert(`Today's AI plan marked as ${status.replace("_", " ")}!`);
     } catch (error) {
@@ -587,6 +613,7 @@ export default function Home() {
         ["Total Subjects", subjects.length],
         ["Weak Subjects", weakSubjects.length],
         ["Average Progress", `${averageProgress}%`],
+        ["Completion Rate", `${completionRate}%`],
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
         ["Risk Level", insights?.risk || "N/A"],
@@ -901,7 +928,7 @@ export default function Home() {
           <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
             <h2 className="text-2xl font-semibold mb-5">Dashboard Overview</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-black p-4 rounded-xl">
                 <p className="text-gray-400">Total Subjects</p>
                 <h3 className="text-3xl font-bold">{subjects.length}</h3>
@@ -918,6 +945,13 @@ export default function Home() {
                 <p className="text-gray-400">Average Progress</p>
                 <h3 className="text-3xl font-bold text-green-400">
                   {averageProgress}%
+                </h3>
+              </div>
+
+              <div className="bg-black p-4 rounded-xl">
+                <p className="text-gray-400">Completion Rate</p>
+                <h3 className="text-3xl font-bold text-purple-400">
+                  {completionRate}%
                 </h3>
               </div>
             </div>
