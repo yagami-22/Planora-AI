@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# 🚀 Planora AI — Real-Time AI Study Planner
 
-## Getting Started
+Planora AI is a full-stack AI-powered study planner designed to help students stay consistent, track progress, and compete with friends using real-time updates.
 
-First, run the development server:
+🌐 Live Demo: https://planora-ai-seven.vercel.app
+
+---
+
+## 🔥 Key Features
+
+- 🔐 User Authentication (Supabase Auth)
+- 📚 Subject Management (exam date, priority, progress)
+- 🤖 AI Timetable Generation
+- 🧠 Daily AI Action Plan
+- ⏱ Study Timer with Focus Mode
+- 📊 Subject-wise Study Tracking
+- 🏆 Daily Leaderboard
+- 👥 Friend Group Competition
+- ⚡ Real-time Study Status (live updates)
+- 🔥 Study Streak & Consistency Tracking
+- 📈 Analytics Dashboard (charts)
+- 📄 PDF Report Export
+
+---
+
+## 🧠 Tech Stack
+
+- Frontend: Next.js, React, Tailwind CSS
+- Backend: Next.js API Routes
+- Database: Supabase PostgreSQL
+- Authentication: Supabase Auth
+- Realtime: Supabase Realtime
+- Charts: Recharts
+- PDF: jsPDF
+- Deployment: Vercel
+
+---
+
+## ⚡ Real-Time Capability
+
+Planora AI uses Supabase Realtime to:
+
+- Show live "Studying Now" status
+- Update leaderboards instantly (no refresh)
+- Sync group competition in real-time
+
+---
+
+## 🎯 Problem Solved
+
+Most students create study plans but fail to follow them.
+
+Planora AI solves this by combining:
+- AI planning
+- Real-time tracking
+- Competitive motivation
+- Progress analytics
+
+---
+
+## 🧪 How to Run Locally
 
 ```bash
+git clone https://github.com/yagami-22/Planora-AI.git
+cd Planora-AI
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
