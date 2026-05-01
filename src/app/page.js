@@ -18,7 +18,8 @@ export default function Home() {
   const [authMode, setAuthMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  const [profileName, setProfileName] = useState("");
+  const [leaderboard, setLeaderboard] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [subjectName, setSubjectName] = useState("");
   const [examDate, setExamDate] = useState("");
@@ -72,6 +73,8 @@ export default function Home() {
       fetchStudyStats(user.id);
       fetchSessionStats(user.id);
       fetchTimerStats(user.id);
+      ensureUserProfile(user);
+      fetchLeaderboard();
     } else {
       setSubjects([]);
       setTimetable([]);
@@ -103,7 +106,82 @@ export default function Home() {
 
     return () => clearInterval(interval);
   }, [timerRunning, timerStartTime]);
-
+  async function ensureUserProfile(currentUser) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+  
+    if (error) {
+      console.error("Profile fetch error:", error);
+      return;
+    }
+  
+    if (!data) {
+      const defaultName = currentUser.email?.split("@")[0] || "Student";
+  
+      const { data: newProfile, error: insertError } = await supabase
+        .from("profiles")
+        .insert([
+          {
+            id: currentUser.id,
+            email: currentUser.email,
+            display_name: defaultName,
+          },
+        ])
+        .select()
+        .single();
+  
+      if (insertError) {
+        console.error("Profile create error:", insertError);
+        return;
+      }
+  
+      setProfileName(newProfile.display_name);
+      return;
+    }
+  
+    setProfileName(data.display_name || "");
+  }
+  
+  async function saveProfileName() {
+    if (!profileName.trim()) {
+      return alert("Enter your name first");
+    }
+  
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        display_name: profileName.trim(),
+      })
+      .eq("id", user.id);
+  
+    if (error) {
+      alert("Failed to save name");
+      return;
+    }
+  
+    alert("Name saved!");
+    await fetchLeaderboard();
+  }
+  
+  async function fetchLeaderboard() {
+    const today = new Date().toISOString().split("T")[0];
+  
+    const { data, error } = await supabase
+      .from("daily_leaderboard")
+      .select("*")
+      .eq("study_date", today)
+      .order("total_seconds", { ascending: false });
+  
+    if (error) {
+      console.error("Leaderboard fetch error:", error);
+      return;
+    }
+  
+    setLeaderboard(data || []);
+  }
   async function signUp() {
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) return alert(error.message);
@@ -540,6 +618,7 @@ export default function Home() {
       setElapsedSeconds(0);
 
       await fetchTimerStats(user.id);
+      await fetchLeaderboard();
 
       alert(`Study timer saved: ${formatStudyDuration(actualSeconds)}`);
     } catch (error) {
@@ -1303,13 +1382,70 @@ export default function Home() {
               ))}
             </div>
           )}
+        </div><div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+  <h2 className="text-2xl font-semibold mb-4 text-yellow-400">
+    Daily Study Leaderboard
+  </h2>
+
+  <div className="bg-black p-4 rounded-xl mb-5">
+    <p className="text-gray-400 text-sm mb-2">Your Display Name</p>
+
+    <div className="flex gap-3">
+      <input
+        className="w-full p-3 bg-zinc-900 border border-zinc-700 rounded-xl"
+        value={profileName}
+        onChange={(e) => setProfileName(e.target.value)}
+        placeholder="Enter your leaderboard name"
+      />
+
+      <button
+        onClick={saveProfileName}
+        className="bg-yellow-500 hover:bg-yellow-400 text-black px-5 rounded-xl font-semibold"
+      >
+        Save
+      </button>
+    </div>
+  </div>
+
+  {leaderboard.length === 0 ? (
+    <p className="text-gray-500">No one has studied today yet.</p>
+  ) : (
+    <div className="space-y-3">
+      {leaderboard.map((item, index) => (
+        <div
+          key={item.user_id}
+          className={`p-4 rounded-xl flex justify-between items-center ${
+            item.user_id === user.id
+              ? "bg-yellow-900/40 border border-yellow-500"
+              : "bg-black"
+          }`}
+        >
+          <div>
+            <h3 className="text-lg font-bold">
+              #{index + 1} {item.display_name || item.email || "Student"}
+            </h3>
+
+            <p className="text-gray-400 text-sm">
+              Sessions: {item.sessions_count}
+            </p>
+          </div>
+
+          <h3 className="text-2xl font-bold text-green-400">
+            {formatStudyDuration(Number(item.total_seconds || 0))}
+          </h3>
         </div>
+      ))}
+    </div>
+  )}
+</div>
 
         {insights && (
+          
           <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
             <h2 className="text-2xl font-semibold mb-4 text-blue-400">
               AI Insights
             </h2>
+            o
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="bg-black p-4 rounded-xl">
