@@ -38,8 +38,8 @@ export default function Home() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerStartTime, setTimerStartTime] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [todayStudyMinutes, setTodayStudyMinutes] = useState(0);
-  const [subjectStudyMinutes, setSubjectStudyMinutes] = useState([]);
+  const [todayStudySeconds, setTodayStudySeconds] = useState(0);
+  const [subjectStudySeconds, setSubjectStudySeconds] = useState([]);
 
   useEffect(() => {
     async function getSession() {
@@ -80,8 +80,8 @@ export default function Home() {
       setLastCompletedDate("");
       setCompletionRate(0);
       setSessionChartData([]);
-      setTodayStudyMinutes(0);
-      setSubjectStudyMinutes([]);
+      setTodayStudySeconds(0);
+      setSubjectStudySeconds([]);
       setSelectedTimerSubjectId("");
       setTimerRunning(false);
       setTimerStartTime(null);
@@ -94,7 +94,9 @@ export default function Home() {
 
     if (timerRunning && timerStartTime) {
       interval = setInterval(() => {
-        const seconds = Math.floor((new Date() - new Date(timerStartTime)) / 1000);
+        const seconds = Math.floor(
+          (new Date() - new Date(timerStartTime)) / 1000
+        );
         setElapsedSeconds(seconds);
       }, 1000);
     }
@@ -228,7 +230,7 @@ export default function Home() {
   async function fetchTimerStats(userId) {
     const { data, error } = await supabase
       .from("study_timer_sessions")
-      .select("subject_name, actual_minutes, created_at")
+      .select("subject_name, actual_minutes, actual_seconds, created_at")
       .eq("user_id", userId);
 
     if (error) {
@@ -242,25 +244,36 @@ export default function Home() {
       s.created_at?.startsWith(today)
     );
 
-    const totalMinutes = todaySessions.reduce(
-      (sum, s) => sum + Number(s.actual_minutes || 0),
+    const totalSeconds = todaySessions.reduce(
+      (sum, s) =>
+        sum +
+        Number(
+          s.actual_seconds ||
+            Number(s.actual_minutes || 0) * 60 ||
+            0
+        ),
       0
     );
 
     const subjectMap = {};
 
     todaySessions.forEach((s) => {
-      subjectMap[s.subject_name] =
-        (subjectMap[s.subject_name] || 0) + Number(s.actual_minutes || 0);
+      const seconds = Number(
+        s.actual_seconds ||
+          Number(s.actual_minutes || 0) * 60 ||
+          0
+      );
+
+      subjectMap[s.subject_name] = (subjectMap[s.subject_name] || 0) + seconds;
     });
 
     const subjectData = Object.keys(subjectMap).map((name) => ({
       subject: name,
-      minutes: subjectMap[name],
+      seconds: subjectMap[name],
     }));
 
-    setTodayStudyMinutes(totalMinutes);
-    setSubjectStudyMinutes(subjectData);
+    setTodayStudySeconds(totalSeconds);
+    setSubjectStudySeconds(subjectData);
   }
 
   async function addSubject() {
@@ -343,8 +356,8 @@ export default function Home() {
     setLastCompletedDate("");
     setCompletionRate(0);
     setSessionChartData([]);
-    setTodayStudyMinutes(0);
-    setSubjectStudyMinutes([]);
+    setTodayStudySeconds(0);
+    setSubjectStudySeconds([]);
     setSelectedTimerSubjectId("");
     setTimerRunning(false);
     setTimerStartTime(null);
@@ -483,7 +496,13 @@ export default function Home() {
     }
 
     const endedAt = new Date();
-    const actualMinutes = Math.floor(elapsedSeconds / 60);
+
+    const actualSeconds = Math.max(
+      1,
+      Math.floor((endedAt - new Date(timerStartTime)) / 1000)
+    );
+
+    const actualMinutes = Math.floor(actualSeconds / 60);
 
     setLoading(true);
 
@@ -491,6 +510,7 @@ export default function Home() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       const res = await fetch("/api/study-timer", {
         method: "POST",
         headers: {
@@ -504,6 +524,7 @@ export default function Home() {
           started_at: new Date(timerStartTime).toISOString(),
           ended_at: endedAt.toISOString(),
           actual_minutes: actualMinutes,
+          actual_seconds: actualSeconds,
         }),
       });
 
@@ -517,9 +538,10 @@ export default function Home() {
       setTimerRunning(false);
       setTimerStartTime(null);
       setElapsedSeconds(0);
+
       await fetchTimerStats(user.id);
 
-      alert(`Study timer saved: ${formatStudyDuration(elapsedSeconds)}`);
+      alert(`Study timer saved: ${formatStudyDuration(actualSeconds)}`);
     } catch (error) {
       console.error("Timer save error:", error);
       alert("Something went wrong while saving timer.");
@@ -539,12 +561,20 @@ export default function Home() {
     )}:${String(secs).padStart(2, "0")}`;
   }
 
-  function formatMinutes(minutes) {
-    const hrs = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+  function formatStudyDuration(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
 
-    if (hrs === 0) return `${mins} min`;
-    return `${hrs}h ${mins}m`;
+    if (hrs > 0) {
+      return `${hrs}h ${mins}m ${secs}s`;
+    }
+
+    if (mins > 0) {
+      return `${mins} min ${secs} sec`;
+    }
+
+    return `${secs} sec`;
   }
 
   function getDaysLeft(date) {
@@ -552,21 +582,6 @@ export default function Home() {
       1,
       Math.ceil((new Date(date) - new Date()) / (1000 * 60 * 60 * 24))
     );
-  }
-  function formatStudyDuration(seconds) {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-  
-    if (hrs > 0) {
-      return `${hrs}h ${mins}m ${secs}s`;
-    }
-  
-    if (mins > 0) {
-      return `${mins} min ${secs} sec`;
-    }
-  
-    return `${secs} sec`;
   }
 
   function getUrgencyLabel(daysLeft) {
@@ -875,7 +890,7 @@ export default function Home() {
         ["Weak Subjects", weakSubjects.length],
         ["Average Progress", `${averageProgress}%`],
         ["Completion Rate", `${completionRate}%`],
-        ["Today Study Time", formatMinutes(todayStudyMinutes)],
+        ["Today Study Time", formatStudyDuration(todayStudySeconds)],
         ["Weakest Subject", weakestSubject],
         ["Strongest Subject", strongestSubject],
         ["Risk Level", insights?.risk || "N/A"],
@@ -1125,7 +1140,7 @@ export default function Home() {
               <div className="bg-black p-4 rounded-xl">
                 <p className="text-gray-400">Today Study Time</p>
                 <h3 className="text-3xl font-bold text-blue-400">
-                  {formatMinutes(todayStudyMinutes)}
+                  {formatStudyDuration(todayStudySeconds)}
                 </h3>
               </div>
             </div>
@@ -1240,16 +1255,16 @@ export default function Home() {
                 {formatTimer(elapsedSeconds)}
               </h3>
               <p className="text-xs text-gray-500 mt-2">
-              {timerRunning
-  ? `Current session: ${formatStudyDuration(elapsedSeconds)}`
-  : "Timer stopped"}
+                {timerRunning
+                  ? `Current session: ${formatStudyDuration(elapsedSeconds)}`
+                  : "Timer stopped"}
               </p>
             </div>
 
             <div className="bg-black p-4 rounded-xl">
               <p className="text-gray-400 text-sm">Today Total Study</p>
               <h3 className="text-3xl font-bold text-green-400">
-                {formatMinutes(todayStudyMinutes)}
+                {formatStudyDuration(todayStudySeconds)}
               </h3>
             </div>
           </div>
@@ -1274,15 +1289,15 @@ export default function Home() {
 
           <h3 className="text-lg font-semibold mb-3">Today Subject-wise Study</h3>
 
-          {subjectStudyMinutes.length === 0 ? (
+          {subjectStudySeconds.length === 0 ? (
             <p className="text-gray-500">No timer study data saved today.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {subjectStudyMinutes.map((item) => (
+              {subjectStudySeconds.map((item) => (
                 <div key={item.subject} className="bg-black p-4 rounded-xl">
                   <p className="text-gray-400 text-sm">{item.subject}</p>
                   <h4 className="text-xl font-bold text-cyan-400">
-                    {formatMinutes(item.minutes)}
+                    {formatStudyDuration(item.seconds)}
                   </h4>
                 </div>
               ))}

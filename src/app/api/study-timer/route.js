@@ -25,6 +25,7 @@ export async function POST(req) {
       started_at,
       ended_at,
       actual_minutes,
+      actual_seconds,
     } = body;
 
     const {
@@ -50,6 +51,7 @@ export async function POST(req) {
           started_at,
           ended_at,
           actual_minutes,
+          actual_seconds,
         },
       ])
       .select()
