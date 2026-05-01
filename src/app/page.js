@@ -37,15 +37,22 @@ export default function Home() {
       const { data } = await supabase.auth.getSession();
       setUser(data.session?.user || null);
     }
-
+  
     getSession();
-
+  
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user || null);
       }
     );
-
+  
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => console.log("Service Worker Registered"))
+        .catch((err) => console.log("SW error:", err));
+    }
+  
     return () => listener.subscription.unsubscribe();
   }, []);
 
