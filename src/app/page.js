@@ -389,6 +389,15 @@ export default function Home() {
           : "Good progress. Focus on revision, mock tests, and speed improvement.",
     };
   }
+  function getUserBehavior() {
+    if (completionRate >= 80) {
+      return "high_performer";
+    } else if (completionRate >= 50) {
+      return "average";
+    } else {
+      return "low_consistency";
+    }
+  }
 
   function generateTodayPlan() {
     if (subjects.length === 0) return null;
@@ -419,7 +428,15 @@ export default function Home() {
     });
 
     const best = scored.sort((a, b) => b.todayScore - a.todayScore)[0];
+    const behavior = getUserBehavior();
 
+let adjustedHours = Number(best.daily_hours) || 2;
+
+if (behavior === "low_consistency") {
+  adjustedHours = Math.max(1, adjustedHours - 1);
+} else if (behavior === "high_performer") {
+  adjustedHours = adjustedHours + 1;
+}
     let focus = "Concept Study + Practice";
     let reason = `${best.subject_name} is selected because progress is ${best.progress}%, priority is ${best.priority}, and exam is in ${best.daysLeft} days.`;
 
@@ -436,7 +453,7 @@ export default function Home() {
     return {
       subject: best.subject_name,
       focus,
-      hours: Number(best.daily_hours) || 2,
+      hours: adjustedHours,
       score: best.todayScore,
       reason,
     };
@@ -1115,6 +1132,9 @@ export default function Home() {
             </div>
 
             <p className="text-gray-300 mb-4">{todayPlan.reason}</p>
+            <p className="text-sm text-purple-400 mb-4">
+  Adaptive Mode: {getUserBehavior().replace("_", " ")}
+</p>
 
             <div className="flex flex-wrap gap-3 mt-4">
               <button
