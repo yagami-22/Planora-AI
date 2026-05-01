@@ -418,6 +418,15 @@ export default function Home() {
       return "low_consistency";
     }
   }
+  function getConsistencyMessage() {
+    if (completionRate >= 80) {
+      return "🔥 Excellent consistency! You're on track for success.";
+    } else if (completionRate >= 50) {
+      return "⚡ Decent consistency, but you can improve.";
+    } else {
+      return "⚠️ Low consistency detected. Reduce load and focus on small wins.";
+    }
+  }
 
   function generateTodayPlan() {
     if (subjects.length === 0) return null;
@@ -1120,7 +1129,9 @@ if (behavior === "low_consistency") {
             <h2 className="text-2xl font-semibold mb-4 text-green-400">
               Today's AI Action Plan
             </h2>
-
+            <p className="text-sm text-orange-400 mb-4">
+  {getConsistencyMessage()}
+</p>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="bg-black p-4 rounded-xl">
                 <p className="text-gray-400 text-sm">Subject</p>
