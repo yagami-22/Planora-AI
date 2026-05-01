@@ -65,3 +65,19 @@ git clone https://github.com/yagami-22/Planora-AI.git
 cd Planora-AI
 npm install
 npm run dev
+## 📸 Screenshots
+
+### Dashboard
+![Dashboard](./public/screenshots/dashboard.png)
+
+### Study Timer
+![Timer](./public/screenshots/timer.png)
+
+### Leaderboard
+![Leaderboard](./public/screenshots/leaderboard.png)
+
+### AI Insights
+![AI Insights](./public/screenshots/AI%20Insights.png)
+
+### Tracker Analysis
+![Tracker](./public/screenshots/Tracker-Analysis.png)
