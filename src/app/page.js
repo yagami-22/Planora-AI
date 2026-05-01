@@ -5,8 +5,8 @@ import autoTable from "jspdf-autotable";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -153,29 +153,44 @@ export default function Home() {
   async function fetchSessionStats(userId) {
     const { data, error } = await supabase
       .from("study_sessions")
-      .select("status")
+      .select("status, created_at")
       .eq("user_id", userId);
   
     if (error) {
-      console.error("Fetch session stats error:", error);
+      console.error(error);
       return;
     }
   
-    const completed = data?.filter((s) => s.status === "completed").length || 0;
-    const skipped = data?.filter((s) => s.status === "skipped").length || 0;
-    const inProgress =
-      data?.filter((s) => s.status === "in_progress").length || 0;
+    const today = new Date();
+    const last7Days = [];
   
-    const total = data?.length || 0;
-    const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const day = d.toISOString().split("T")[0];
   
-    setCompletionRate(rate);
+      const completed = data.filter(
+        (s) =>
+          s.status === "completed" &&
+          s.created_at.startsWith(day)
+      ).length;
   
-    setSessionChartData([
-      { name: "Completed", sessions: completed },
-      { name: "Skipped", sessions: skipped },
-      { name: "In Progress", sessions: inProgress },
-    ]);
+      last7Days.push({
+        day: day.slice(5), // MM-DD
+        completed,
+      });
+    }
+  
+    setSessionChartData(last7Days);
+  
+    const total = data.length;
+    const completedTotal = data.filter(
+      (s) => s.status === "completed"
+    ).length;
+  
+    setCompletionRate(
+      total === 0 ? 0 : Math.round((completedTotal / total) * 100)
+    );
   }
     
 
@@ -1245,12 +1260,17 @@ if (behavior === "low_consistency") {
   ) : (
     <div className="w-full h-72 bg-black p-4 rounded-xl">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sessionChartData}>
-          <XAxis dataKey="name" stroke="#9ca3af" />
-          <YAxis stroke="#9ca3af" allowDecimals={false} />
-          <Tooltip />
-          <Bar dataKey="sessions" fill="#a855f7" radius={[8, 8, 0, 0]} />
-        </BarChart>
+      <LineChart data={sessionChartData}>
+  <XAxis dataKey="day" stroke="#9ca3af" />
+  <YAxis stroke="#9ca3af" allowDecimals={false} />
+  <Tooltip />
+  <Line
+    type="monotone"
+    dataKey="completed"
+    stroke="#a855f7"
+    strokeWidth={3}
+  />
+</LineChart>
       </ResponsiveContainer>
     </div>
   )}
