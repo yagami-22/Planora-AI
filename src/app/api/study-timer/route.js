@@ -1,8 +1,21 @@
-import { NextResponse } from "next/server";
-import { supabase } from "../../../lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req) {
   try {
+    const authHeader = req.headers.get("authorization");
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
+    );
+
     const body = await req.json();
 
     const {
@@ -14,11 +27,17 @@ export async function POST(req) {
       actual_minutes,
     } = body;
 
-    if (!user_id || !subject_id || !subject_name || !started_at || !ended_at) {
-      return NextResponse.json(
-        { error: "Missing required timer data" },
-        { status: 400 }
-      );
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return Response.json({ error: "User not authenticated" }, { status: 401 });
+    }
+
+    if (user.id !== user_id) {
+      return Response.json({ error: "User mismatch" }, { status: 403 });
     }
 
     const { data, error } = await supabase
@@ -37,16 +56,11 @@ export async function POST(req) {
       .single();
 
     if (error) {
-      console.error("Timer save error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data });
-  } catch (error) {
-    console.error("Timer API error:", error);
-    return NextResponse.json(
-      { error: "Something went wrong" },
-      { status: 500 }
-    );
+    return Response.json({ success: true, data });
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 });
   }
 }
