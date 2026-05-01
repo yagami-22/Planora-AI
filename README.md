@@ -65,6 +65,7 @@ git clone https://github.com/yagami-22/Planora-AI.git
 cd Planora-AI
 npm install
 npm run dev
+```
 ## 📸 Screenshots
 
 ### Dashboard
@@ -81,3 +82,7 @@ npm run dev
 
 ### Tracker Analysis
 ![Tracker](./public/screenshots/Tracker-Analysis.png)
+
+
+
+
