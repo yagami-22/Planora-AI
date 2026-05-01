@@ -483,7 +483,7 @@ export default function Home() {
     }
 
     const endedAt = new Date();
-    const actualMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+    const actualMinutes = Math.floor(elapsedSeconds / 60);
 
     setLoading(true);
 
@@ -519,7 +519,7 @@ export default function Home() {
       setElapsedSeconds(0);
       await fetchTimerStats(user.id);
 
-      alert(`Study timer saved: ${actualMinutes} minute(s)`);
+      alert(`Study timer saved: ${formatStudyDuration(elapsedSeconds)}`);
     } catch (error) {
       console.error("Timer save error:", error);
       alert("Something went wrong while saving timer.");
@@ -552,6 +552,21 @@ export default function Home() {
       1,
       Math.ceil((new Date(date) - new Date()) / (1000 * 60 * 60 * 24))
     );
+  }
+  function formatStudyDuration(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+  
+    if (hrs > 0) {
+      return `${hrs}h ${mins}m ${secs}s`;
+    }
+  
+    if (mins > 0) {
+      return `${mins} min ${secs} sec`;
+    }
+  
+    return `${secs} sec`;
   }
 
   function getUrgencyLabel(daysLeft) {
@@ -1225,7 +1240,9 @@ export default function Home() {
                 {formatTimer(elapsedSeconds)}
               </h3>
               <p className="text-xs text-gray-500 mt-2">
-                {timerRunning ? "Timer running..." : "Timer stopped"}
+              {timerRunning
+  ? `Current session: ${formatStudyDuration(elapsedSeconds)}`
+  : "Timer stopped"}
               </p>
             </div>
 
