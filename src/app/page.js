@@ -28,7 +28,11 @@ export default function Home() {
   const [progress, setProgress] = useState("");
   const [timetable, setTimetable] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  const [groupName, setGroupName] = useState("");
+const [joinGroupId, setJoinGroupId] = useState("");
+const [myGroups, setMyGroups] = useState([]);
+const [selectedGroupId, setSelectedGroupId] = useState("");
+const [groupLeaderboard, setGroupLeaderboard] = useState([]);
   const [studyStreak, setStudyStreak] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [lastCompletedDate, setLastCompletedDate] = useState("");
@@ -74,6 +78,7 @@ export default function Home() {
       fetchSessionStats(user.id);
       fetchTimerStats(user.id);
       ensureUserProfile(user);
+      fetchMyGroups(user.id);
       fetchLeaderboard();
     } else {
       setSubjects([]);
@@ -143,6 +148,103 @@ export default function Home() {
     }
   
     setProfileName(data.display_name || "");
+  }async function fetchMyGroups(userId) {
+    const { data, error } = await supabase
+      .from("group_members")
+      .select("group_id, groups(id, name)")
+      .eq("user_id", userId);
+  
+    if (error) {
+      console.error("Fetch groups error:", error);
+      return;
+    }
+  
+    const groups = (data || []).map((item) => item.groups).filter(Boolean);
+    setMyGroups(groups);
+  
+    if (groups.length > 0 && !selectedGroupId) {
+      setSelectedGroupId(groups[0].id);
+      await fetchGroupLeaderboard(groups[0].id);
+    }
+  }
+  
+  async function createStudyGroup() {
+    if (!groupName.trim()) return alert("Enter group name");
+  
+    const { data: group, error: groupError } = await supabase
+      .from("groups")
+      .insert([
+        {
+          name: groupName.trim(),
+          created_by: user.id,
+        },
+      ])
+      .select()
+      .single();
+  
+    if (groupError) {
+      alert("Failed to create group");
+      console.error(groupError);
+      return;
+    }
+  
+    const { error: memberError } = await supabase.from("group_members").insert([
+      {
+        group_id: group.id,
+        user_id: user.id,
+      },
+    ]);
+  
+    if (memberError) {
+      alert("Group created but joining failed");
+      console.error(memberError);
+      return;
+    }
+  
+    setGroupName("");
+    await fetchMyGroups(user.id);
+    alert(`Group created! Share this ID with friends: ${group.id}`);
+  }
+  
+  async function joinStudyGroup() {
+    if (!joinGroupId.trim()) return alert("Enter group ID");
+  
+    const { error } = await supabase.from("group_members").insert([
+      {
+        group_id: joinGroupId.trim(),
+        user_id: user.id,
+      },
+    ]);
+  
+    if (error) {
+      alert("Failed to join group. Check group ID or maybe already joined.");
+      console.error(error);
+      return;
+    }
+  
+    setJoinGroupId("");
+    await fetchMyGroups(user.id);
+    alert("Joined group successfully!");
+  }
+  
+  async function fetchGroupLeaderboard(groupId) {
+    if (!groupId) return;
+  
+    const today = new Date().toISOString().split("T")[0];
+  
+    const { data, error } = await supabase
+      .from("group_leaderboard")
+      .select("*")
+      .eq("group_id", groupId)
+      .eq("study_date", today)
+      .order("total_seconds", { ascending: false });
+  
+    if (error) {
+      console.error("Group leaderboard fetch error:", error);
+      return;
+    }
+  
+    setGroupLeaderboard(data || []);
   }
   
   async function saveProfileName() {
@@ -164,6 +266,9 @@ export default function Home() {
   
     alert("Name saved!");
     await fetchLeaderboard();
+    if (selectedGroupId) {
+      await fetchGroupLeaderboard(selectedGroupId);
+    }
   }
   
   async function fetchLeaderboard() {
@@ -1438,7 +1543,111 @@ export default function Home() {
     </div>
   )}
 </div>
+<div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
+  <h2 className="text-2xl font-semibold mb-4 text-pink-400">
+    Friend Group Competition
+  </h2>
 
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+    <div className="bg-black p-4 rounded-xl">
+      <p className="text-gray-400 text-sm mb-2">Create Group</p>
+      <div className="flex gap-3">
+        <input
+          className="w-full p-3 bg-zinc-900 border border-zinc-700 rounded-xl"
+          value={groupName}
+          onChange={(e) => setGroupName(e.target.value)}
+          placeholder="Example: Hostel Study Squad"
+        />
+        <button
+          onClick={createStudyGroup}
+          className="bg-pink-500 hover:bg-pink-400 text-black px-5 rounded-xl font-semibold"
+        >
+          Create
+        </button>
+      </div>
+    </div>
+
+    <div className="bg-black p-4 rounded-xl">
+      <p className="text-gray-400 text-sm mb-2">Join Group</p>
+      <div className="flex gap-3">
+        <input
+          className="w-full p-3 bg-zinc-900 border border-zinc-700 rounded-xl"
+          value={joinGroupId}
+          onChange={(e) => setJoinGroupId(e.target.value)}
+          placeholder="Paste group ID"
+        />
+        <button
+          onClick={joinStudyGroup}
+          className="bg-purple-500 hover:bg-purple-400 text-black px-5 rounded-xl font-semibold"
+        >
+          Join
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {myGroups.length > 0 && (
+    <div className="bg-black p-4 rounded-xl mb-5">
+      <p className="text-gray-400 text-sm mb-2">Select Group</p>
+      <select
+        className="w-full p-3 bg-zinc-900 border border-zinc-700 rounded-xl"
+        value={selectedGroupId}
+        onChange={async (e) => {
+          setSelectedGroupId(e.target.value);
+          await fetchGroupLeaderboard(e.target.value);
+        }}
+      >
+        {myGroups.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </select>
+
+      <p className="text-xs text-gray-500 mt-2">
+        Group ID: {selectedGroupId || "No group selected"}
+      </p>
+    </div>
+  )}
+
+  {myGroups.length === 0 ? (
+    <p className="text-gray-500">
+      Create or join a group to compete with friends.
+    </p>
+  ) : groupLeaderboard.length === 0 ? (
+    <p className="text-gray-500">
+      No study data in this group today yet.
+    </p>
+  ) : (
+    <div className="space-y-3">
+      {groupLeaderboard.map((item, index) => {
+        const medal =
+          index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`;
+
+        return (
+          <div
+            key={item.user_id}
+            className={`p-4 rounded-xl flex justify-between items-center ${
+              item.user_id === user.id
+                ? "bg-pink-900/40 border border-pink-500"
+                : "bg-black"
+            }`}
+          >
+            <div>
+              <h3 className="text-lg font-bold">
+                {medal} {item.display_name || "Student"}
+              </h3>
+            </div>
+
+            <h3 className="text-2xl font-bold text-green-400">
+              {formatStudyDuration(Number(item.total_seconds || 0))}
+            </h3>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
         {insights && (
           
           <div className="mt-6 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
