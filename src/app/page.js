@@ -111,6 +111,26 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
 
     return () => clearInterval(interval);
   }, [timerRunning, timerStartTime]);
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-profiles")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+        },
+        async () => {
+          await fetchLeaderboard();
+        }
+      )
+      .subscribe();
+  
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedGroupId) return;
