@@ -320,7 +320,10 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
   
     const { data, error } = await supabase
       .from("daily_leaderboard")
-      .select("*")
+      .select(`
+        *,
+        profiles(is_studying)
+      `)
       .eq("study_date", today)
       .order("total_seconds", { ascending: false });
   
@@ -1648,15 +1651,27 @@ const [groupLeaderboard, setGroupLeaderboard] = useState([]);
                 )}
               </h3>
 
-              <div className="flex items-center gap-3 mt-2">
-                <p className="text-gray-400 text-sm">
-                  Sessions: {item.sessions_count}
-                </p>
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+  <p className="text-gray-400 text-sm">
+    Sessions: {item.sessions_count}
+  </p>
 
-                <span className="text-xs text-green-400">
-                  ⚡ Live score
-                </span>
-              </div>
+  <span className="text-xs text-green-400">
+    ⚡ Live score
+  </span>
+
+  <span className="flex items-center gap-1 text-xs text-zinc-400">
+    <span
+      className={`h-2.5 w-2.5 rounded-full ${
+        item.profiles?.is_studying
+          ? "bg-green-400 animate-pulse shadow-[0_0_10px_#4ade80]"
+          : "bg-zinc-500"
+      }`}
+    ></span>
+
+    {item.profiles?.is_studying ? "Studying now" : "Offline"}
+  </span>
+</div>
             </div>
 
             <h3 className="text-3xl font-black text-green-400">
